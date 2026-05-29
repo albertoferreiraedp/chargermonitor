@@ -13,16 +13,17 @@
 <style>
   :root {
     --bg:#0a0e14; --bg-2:#0e141d; --panel:#121a25; --panel-2:#16202d; --line:#1f2c3c;
-    --text:#e8eef6; --muted:#8493a6; --faint:#5b6b80; --accent:#1de9a6;
-    --op-edp:#1de9a6; --op-iberdrola:#4cc4ff; --op-repsol:#ff7e45; --op-endesa:#b18cff; --op-other:#8493a6;
-    --st-available:#2fd673; --st-occupied:#ffb020; --st-out:#ff4d5e; --st-reserved:#5b8def; --st-unknown:#5b6b80;
+    --text:#e8eef6; --muted:#8493a6; --faint:#5b6b80; --accent:#16c98a;
+    /* brand colours (brightened for dark bg) */
+    --op-edp:#16c98a; --op-iberdrola:#a4d65e; --op-repsol:#ff8a2b; --op-endesa:#5a7bff; --op-other:#8493a6;
+    --st-available:#2fd673; --st-occupied:#ffb020; --st-out:#ff5d6a; --st-reserved:#5b8def; --st-unknown:#6b7480;
   }
   * { box-sizing:border-box; }
   html,body { margin:0; background:var(--bg); color:var(--text); font-family:"Hanken Grotesk",system-ui,sans-serif; }
   body {
     background:
-      radial-gradient(1200px 500px at 80% -10%, rgba(29,233,166,.08), transparent 60%),
-      radial-gradient(900px 500px at 0% 0%, rgba(76,196,255,.06), transparent 55%),
+      radial-gradient(1200px 500px at 80% -10%, rgba(22,201,138,.10), transparent 60%),
+      radial-gradient(900px 500px at 0% 0%, rgba(90,123,255,.07), transparent 55%),
       linear-gradient(180deg,var(--bg),var(--bg-2));
     background-attachment:fixed; min-height:100vh;
   }
@@ -36,8 +37,8 @@
   .meta { text-align:right; font-family:"IBM Plex Mono",monospace; font-size:12px; color:var(--faint); line-height:1.7; }
   .meta b { color:var(--text); font-weight:600; }
   .pulse { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--accent);
-    box-shadow:0 0 0 0 rgba(29,233,166,.6); animation:pulse 2.2s infinite; margin-right:6px; }
-  @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(29,233,166,.5)} 70%{box-shadow:0 0 0 7px rgba(29,233,166,0)} 100%{box-shadow:0 0 0 0 rgba(29,233,166,0)} }
+    box-shadow:0 0 0 0 rgba(22,201,138,.6); animation:pulse 2.2s infinite; margin-right:6px; }
+  @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(22,201,138,.5)} 70%{box-shadow:0 0 0 7px rgba(22,201,138,0)} 100%{box-shadow:0 0 0 0 rgba(22,201,138,0)} }
 
   .section-label { font-family:"IBM Plex Mono",monospace; font-size:11px; letter-spacing:.18em; text-transform:uppercase; color:var(--faint); margin:30px 0 12px; }
   .cluster-head { display:flex; align-items:baseline; gap:12px; margin:38px 0 14px; padding-bottom:8px; border-bottom:1px dashed var(--line); }
@@ -50,8 +51,8 @@
   .kpi::before { content:""; position:absolute; left:0; top:0; bottom:0; width:4px; background:var(--op-other); }
   .kpi[data-op="edp"]::before{background:var(--op-edp)} .kpi[data-op="iberdrola"]::before{background:var(--op-iberdrola)}
   .kpi[data-op="repsol"]::before{background:var(--op-repsol)} .kpi[data-op="endesa"]::before{background:var(--op-endesa)}
-  .kpi.lead { box-shadow:0 0 0 1px rgba(255,176,32,.3), 0 8px 30px rgba(0,0,0,.25); }
-  .kpi.edp { box-shadow:0 0 0 1px rgba(29,233,166,.35), 0 8px 30px rgba(29,233,166,.08); }
+  .kpi.lead { box-shadow:0 0 0 1px rgba(255,176,32,.3), 0 8px 30px rgba(0,0,0,.3); }
+  .kpi.edp { box-shadow:0 0 0 1px rgba(22,201,138,.4), 0 8px 30px rgba(22,201,138,.1); }
   .kpi .op { font-size:13px; color:var(--muted); display:flex; align-items:center; gap:7px; }
   .kpi .op .dot{width:9px;height:9px;border-radius:50%}
   .kpi .val { font-family:"Bricolage Grotesque",sans-serif; font-weight:800; font-size:36px; letter-spacing:-.03em; margin-top:6px; line-height:1; }
@@ -77,13 +78,14 @@
   .loc .lrate { font-family:"IBM Plex Mono",monospace; font-size:12px; color:var(--faint); margin:6px 0 10px; }
   .cps { display:flex; flex-direction:column; gap:7px; }
   .cp { display:flex; align-items:center; justify-content:space-between; gap:10px; background:rgba(255,255,255,.02); border:1px solid var(--line); border-radius:9px; padding:8px 10px; }
-  .cp .id { font-family:"IBM Plex Mono",monospace; font-size:11px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .cp .id { font-family:"IBM Plex Mono",monospace; font-size:11px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; min-width:0; }
+  .cp .pts { font-family:"IBM Plex Mono",monospace; font-size:10px; color:var(--faint); white-space:nowrap; }
   .chip { font-size:11px; font-weight:600; padding:3px 9px; border-radius:999px; white-space:nowrap; border:1px solid transparent; }
   .chip.available{color:var(--st-available);background:rgba(47,214,115,.12);border-color:rgba(47,214,115,.3)}
   .chip.occupied{color:var(--st-occupied);background:rgba(255,176,32,.12);border-color:rgba(255,176,32,.3)}
-  .chip.out_of_service{color:var(--st-out);background:rgba(255,77,94,.12);border-color:rgba(255,77,94,.3)}
+  .chip.out_of_service{color:var(--st-out);background:rgba(255,93,106,.12);border-color:rgba(255,93,106,.3)}
   .chip.reserved{color:var(--st-reserved);background:rgba(91,141,239,.12);border-color:rgba(91,141,239,.3)}
-  .chip.unknown{color:var(--st-unknown);background:rgba(91,107,128,.12);border-color:rgba(91,107,128,.3)}
+  .chip.unknown{color:var(--st-unknown);background:rgba(107,116,128,.14);border-color:rgba(107,116,128,.34)}
 
   .coverage { display:flex; gap:10px; flex-wrap:wrap; margin:18px 0 2px; }
   .cov { background:linear-gradient(180deg,var(--panel),var(--panel-2)); border:1px solid var(--line); border-radius:11px; padding:9px 14px; display:flex; flex-direction:column; gap:3px; min-width:104px; }
@@ -93,6 +95,17 @@
   .cov.live::before { content:""; display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--accent); margin-right:6px; vertical-align:middle; }
   .cov.warn { border-color:rgba(255,176,32,.45); }
   .cov.warn .v { color:var(--st-occupied); }
+
+  /* EDP gap callouts (viz 5) */
+  .gaps { display:flex; gap:10px; flex-wrap:wrap; margin:14px 0 2px; }
+  .gap { display:flex; align-items:center; gap:9px; background:linear-gradient(180deg,var(--panel),var(--panel-2)); border:1px solid var(--line); border-radius:10px; padding:8px 13px; font-size:13px; color:var(--muted); }
+  .gap .vs { font-weight:600; color:var(--text); }
+  .gap b { font-family:"IBM Plex Mono",monospace; font-weight:700; display:flex; align-items:center; gap:3px; }
+  .gap.up b { color:var(--op-edp); }
+  .gap.down b { color:var(--st-out); }
+  .gap.flat b { color:var(--faint); }
+
+  .barbox { height:230px; padding:6px 2px 10px; }
   .collecting { font-family:"IBM Plex Mono",monospace; font-size:12px; color:var(--muted); background:rgba(76,196,255,.06); border:1px solid rgba(76,196,255,.22); border-radius:10px; padding:9px 13px; margin:12px 0 2px; }
   .banner { font-family:"IBM Plex Mono",monospace; font-size:12px; color:var(--st-occupied); background:rgba(255,176,32,.08); border:1px solid rgba(255,176,32,.25); border-radius:10px; padding:9px 13px; margin-bottom:18px; }
   footer { color:var(--faint); font-size:12px; margin-top:34px; border-top:1px solid var(--line); padding-top:14px; }
@@ -120,6 +133,7 @@
 
   <div class="section-label">Overall — cumulative occupancy since scraping began</div>
   <div class="kpis" id="overall-kpis"></div>
+  <div class="gaps" id="overall-gaps"></div>
 
   <div id="clusters"></div>
 
@@ -238,6 +252,19 @@ function makeChart(canvas, S){
   }});
 }
 
+// EDP gap callouts (viz 5): EDP minus each competitor, in points.
+function gapsHtml(S){
+  if(!S.byOp.edp || S.byOp.edp.rate==null) return "";
+  const edp=S.byOp.edp.rate;
+  const rows=S.present.filter(op=>op!=="edp" && S.byOp[op].rate!=null).map(op=>{
+    const g=Math.round((edp - S.byOp[op].rate)*100);
+    const cls=g>0?"up":(g<0?"down":"flat"); const arrow=g>0?"▲":(g<0?"▼":"—");
+    const word=g>0?`+${g}`:`${g}`;
+    return `<div class="gap ${cls}"><span class="vs">EDP vs ${OPS[op].name}</span><b>${arrow} ${word} pts</b></div>`;
+  });
+  return rows.join("");
+}
+
 function render({rows,live}){
   document.getElementById("m-source").textContent="source: "+(live?"live data/readings.csv":"SAMPLE DATA (preview)");
   if(!live){ const b=document.getElementById("banner"); b.style.display="block";
@@ -255,11 +282,21 @@ function render({rows,live}){
   const cadence = cycles>1 ? spanMin/(cycles-1) : null;
   const agoMin = (Date.now()-last)/60000;
   const stale = live && agoMin>15;
+
+  // data points per charger (sampling density)
+  const cpCount={};
+  for(const r of rows){ if(!r.charge_point_id) continue;
+    const k=(r.location_id||"")+"|"+r.charge_point_id; cpCount[k]=(cpCount[k]||0)+1; }
+  const cpKeys=Object.keys(cpCount);
+  const avgSamples = cpKeys.length ? cpKeys.reduce((s,k)=>s+cpCount[k],0)/cpKeys.length : 0;
+
   const cov=(l,v,cls="")=>`<div class="cov ${cls}"><span class="l">${l}</span><span class="v">${v}</span></div>`;
   document.getElementById("coverage").innerHTML =
+    cov("Recording since", cycles? fmt(first) : "—") +
     cov("Extractions", `${cycles}`, live?"live":"") +
     cov("Cadence", cadence==null?"—":`~${cadence.toFixed(1)}<small> min</small>`) +
     cov("Coverage", cycles>1?dur(spanMin):"—") +
+    cov("Samples / charger", `${avgSamples.toFixed(avgSamples<10?1:0)}`) +
     cov("Last reading", `${dur(agoMin)}<small> ago</small>`, stale?"warn":"");
   if(live && cycles<3){
     const c=document.getElementById("collecting"); c.style.display="block";
@@ -275,6 +312,7 @@ function render({rows,live}){
     .sort((a,b)=>all.byOp[b].rate-all.byOp[a].rate)[0];
   document.getElementById("overall-kpis").innerHTML=
     all.present.map(op=>kpiCard(op, all.byOp[op], {lead:op===overallLead})).join("");
+  document.getElementById("overall-gaps").innerHTML=gapsHtml(all);
 
   // ---- per cluster ----
   const clusters=[...new Set(rows.map(r=>r.cluster).filter(Boolean))].sort();
@@ -301,6 +339,7 @@ function render({rows,live}){
         <span class="lop" style="color:${OPS[L.op].color}">${esc(L.operator||OPS[L.op].name)}</span></div>
         <div class="lrate">occupancy ${rt} · now ${nowCharging}/${L.points.length} charging</div>
         <div class="cps">${L.points.map(p=>`<div class="cp"><span class="id" title="${esc(p.id)}">${esc(p.id)}</span>
+          <span class="pts">${cpCount[L.key+"|"+p.id]||0} pts</span>
           <span class="chip ${p.status}">${esc(p.raw||p.status)}</span></div>`).join("")}</div></div>`;
     }).join("");
 
@@ -309,8 +348,9 @@ function render({rows,live}){
     sec.innerHTML=`
       <div class="cluster-head"><span class="n">${esc(cl)}</span><span class="ops">${opsLine}</span></div>
       <div class="kpis">${S.present.map(op=>kpiCard(op,S.byOp[op],{lead:op===cLead})).join("")}</div>
-      <div class="panel"><h3>Cumulative occupancy rate</h3>
-        <p class="hint">Share of total observed time each operator's chargers have been charging, since scraping began. Settles as more readings arrive.</p>
+      <div class="gaps">${gapsHtml(S)}</div>
+      <div class="panel"><h3>Occupancy rate over time</h3>
+        <p class="hint">How each operator's cumulative occupancy has evolved. Settles as more readings arrive.</p>
         <div class="legend">${S.present.map(op=>`<span><i style="background:${OPS[op].color}"></i>${OPS[op].name}</span>`).join("")}</div>
         <div class="chartbox"><canvas id="${cid}"></canvas></div></div>
       <div class="grid">${cards}</div>`;
