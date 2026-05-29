@@ -1,0 +1,57 @@
+name: scrape-chargers
+
+# Runs every 5 minutes. GitHub's scheduled jobs are not perfectly punctual
+# (they can run a few minutes late or skip a slot under load) — fine for a
+# week-long occupancy study. Turn this off after your week by disabling the
+# workflow in the Actions tab (or delete this file).
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}   # lets you trigger a run manually for testing
+
+permissions:
+  contents: write          # needed to commit the updated CSV back to the repo
+
+concurrency:
+  group: scrape
+  cancel-in-progress: false
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          python -m playwright install --with-deps chromium
+
+      - name: Scrape
+        run: python scraper.py
+
+      - name: Commit readings
+        run: |
+          git config user.name  "charger-bot"
+          git config user.email "charger-bot@users.noreply.github.com"
+          git add data/readings.csv
+          if git diff --staged --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "readings $(date -u +%Y-%m-%dT%H:%MZ) [skip ci]"
+            # retry push in case another run committed first
+            for i in 1 2 3; do
+              git pull --rebase --autostash && git push && break || sleep 5
+            done
+          fi
