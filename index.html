@@ -1,0 +1,289 @@
+<!-- EV charger occupancy dashboard — cluster-centric (EDP vs nearby operators).
+     Deployed: reads ./data/readings.csv (same-origin on GitHub Pages, root source).
+     Preview:  if the CSV is missing/empty, generates representative sample data. -->
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Charger Occupancy — EDP vs neighbours by site</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Hanken+Grotesk:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+
+<style>
+  :root {
+    --bg:#0a0e14; --bg-2:#0e141d; --panel:#121a25; --panel-2:#16202d; --line:#1f2c3c;
+    --text:#e8eef6; --muted:#8493a6; --faint:#5b6b80; --accent:#1de9a6;
+    --op-edp:#1de9a6; --op-iberdrola:#4cc4ff; --op-repsol:#ff7e45; --op-endesa:#b18cff; --op-other:#8493a6;
+    --st-available:#2fd673; --st-occupied:#ffb020; --st-out:#ff4d5e; --st-reserved:#5b8def; --st-unknown:#5b6b80;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; background:var(--bg); color:var(--text); font-family:"Hanken Grotesk",system-ui,sans-serif; }
+  body {
+    background:
+      radial-gradient(1200px 500px at 80% -10%, rgba(29,233,166,.08), transparent 60%),
+      radial-gradient(900px 500px at 0% 0%, rgba(76,196,255,.06), transparent 55%),
+      linear-gradient(180deg,var(--bg),var(--bg-2));
+    background-attachment:fixed; min-height:100vh;
+  }
+  .wrap { max-width:1180px; margin:0 auto; padding:28px 22px 64px; }
+  header.top { display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap;
+    border-bottom:1px solid var(--line); padding-bottom:18px; }
+  .brand { display:flex; flex-direction:column; gap:4px; }
+  .kicker { font-family:"IBM Plex Mono",monospace; font-size:11px; letter-spacing:.22em; text-transform:uppercase; color:var(--accent); }
+  h1 { font-family:"Bricolage Grotesque",sans-serif; font-weight:800; font-size:clamp(26px,4vw,40px); line-height:1; margin:2px 0 0; letter-spacing:-.02em; }
+  .sub { color:var(--muted); font-size:14px; }
+  .meta { text-align:right; font-family:"IBM Plex Mono",monospace; font-size:12px; color:var(--faint); line-height:1.7; }
+  .meta b { color:var(--text); font-weight:600; }
+  .pulse { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--accent);
+    box-shadow:0 0 0 0 rgba(29,233,166,.6); animation:pulse 2.2s infinite; margin-right:6px; }
+  @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(29,233,166,.5)} 70%{box-shadow:0 0 0 7px rgba(29,233,166,0)} 100%{box-shadow:0 0 0 0 rgba(29,233,166,0)} }
+
+  .section-label { font-family:"IBM Plex Mono",monospace; font-size:11px; letter-spacing:.18em; text-transform:uppercase; color:var(--faint); margin:30px 0 12px; }
+  .cluster-head { display:flex; align-items:baseline; gap:12px; margin:38px 0 14px; padding-bottom:8px; border-bottom:1px dashed var(--line); }
+  .cluster-head .n { font-family:"Bricolage Grotesque",sans-serif; font-weight:800; font-size:22px; letter-spacing:-.02em; }
+  .cluster-head .ops { font-family:"IBM Plex Mono",monospace; font-size:12px; color:var(--muted); }
+  .cluster-head .ops b { color:var(--text); font-weight:600; }
+
+  .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:14px; }
+  .kpi { background:linear-gradient(180deg,var(--panel),var(--panel-2)); border:1px solid var(--line); border-radius:14px; padding:16px 18px; position:relative; overflow:hidden; }
+  .kpi::before { content:""; position:absolute; left:0; top:0; bottom:0; width:4px; background:var(--op-other); }
+  .kpi[data-op="edp"]::before{background:var(--op-edp)} .kpi[data-op="iberdrola"]::before{background:var(--op-iberdrola)}
+  .kpi[data-op="repsol"]::before{background:var(--op-repsol)} .kpi[data-op="endesa"]::before{background:var(--op-endesa)}
+  .kpi.lead { box-shadow:0 0 0 1px rgba(255,176,32,.3), 0 8px 30px rgba(0,0,0,.25); }
+  .kpi.edp { box-shadow:0 0 0 1px rgba(29,233,166,.35), 0 8px 30px rgba(29,233,166,.08); }
+  .kpi .op { font-size:13px; color:var(--muted); display:flex; align-items:center; gap:7px; }
+  .kpi .op .dot{width:9px;height:9px;border-radius:50%}
+  .kpi .val { font-family:"Bricolage Grotesque",sans-serif; font-weight:800; font-size:36px; letter-spacing:-.03em; margin-top:6px; line-height:1; }
+  .kpi .val small{font-size:15px;color:var(--muted);font-weight:600;margin-left:2px}
+  .kpi .det { font-family:"IBM Plex Mono",monospace; font-size:11px; color:var(--faint); margin-top:8px; }
+  .tag { font-family:"IBM Plex Mono",monospace; font-size:9px; letter-spacing:.12em; text-transform:uppercase; padding:2px 6px; border-radius:5px; position:absolute; top:12px; right:12px; }
+  .tag.busiest{ color:var(--bg); background:var(--st-occupied); }
+  .tag.edp{ color:var(--bg); background:var(--accent); }
+
+  .panel { background:linear-gradient(180deg,var(--panel),var(--panel-2)); border:1px solid var(--line); border-radius:16px; padding:16px 16px 6px; margin-top:14px; }
+  .panel h3 { font-family:"Bricolage Grotesque",sans-serif; font-weight:700; font-size:15px; margin:2px 4px 8px; letter-spacing:-.01em; color:var(--muted); }
+  .legend { display:flex; gap:14px; flex-wrap:wrap; margin:2px 4px 10px; }
+  .legend span{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+  .legend i{width:12px;height:12px;border-radius:3px;display:inline-block}
+  .chartbox { height:260px; padding:4px 2px 8px; }
+
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:14px; margin-top:14px; }
+  .loc { background:linear-gradient(180deg,var(--panel),var(--panel-2)); border:1px solid var(--line); border-radius:14px; padding:15px 16px; }
+  .loc .lh { display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
+  .loc .lname { font-weight:600; font-size:15px; }
+  .loc .lop { font-family:"IBM Plex Mono",monospace; font-size:11px; }
+  .loc .lrate { font-family:"IBM Plex Mono",monospace; font-size:12px; color:var(--faint); margin:6px 0 10px; }
+  .cps { display:flex; flex-direction:column; gap:7px; }
+  .cp { display:flex; align-items:center; justify-content:space-between; gap:10px; background:rgba(255,255,255,.02); border:1px solid var(--line); border-radius:9px; padding:8px 10px; }
+  .cp .id { font-family:"IBM Plex Mono",monospace; font-size:11px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .chip { font-size:11px; font-weight:600; padding:3px 9px; border-radius:999px; white-space:nowrap; border:1px solid transparent; }
+  .chip.available{color:var(--st-available);background:rgba(47,214,115,.12);border-color:rgba(47,214,115,.3)}
+  .chip.occupied{color:var(--st-occupied);background:rgba(255,176,32,.12);border-color:rgba(255,176,32,.3)}
+  .chip.out_of_service{color:var(--st-out);background:rgba(255,77,94,.12);border-color:rgba(255,77,94,.3)}
+  .chip.reserved{color:var(--st-reserved);background:rgba(91,141,239,.12);border-color:rgba(91,141,239,.3)}
+  .chip.unknown{color:var(--st-unknown);background:rgba(91,107,128,.12);border-color:rgba(91,107,128,.3)}
+
+  .banner { font-family:"IBM Plex Mono",monospace; font-size:12px; color:var(--st-occupied); background:rgba(255,176,32,.08); border:1px solid rgba(255,176,32,.25); border-radius:10px; padding:9px 13px; margin-bottom:18px; }
+  footer { color:var(--faint); font-size:12px; margin-top:34px; border-top:1px solid var(--line); padding-top:14px; }
+  code { font-family:"IBM Plex Mono",monospace; color:var(--muted); }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <div class="kicker">REVE · occupancy monitor</div>
+      <h1>EDP vs neighbours, by site</h1>
+      <div class="sub">Charger occupancy across three nearby clusters — sampled every 5 min</div>
+    </div>
+    <div class="meta">
+      <div><span class="pulse"></span>updated <b id="m-updated">—</b></div>
+      <div><b id="m-locs">—</b> sites · <b id="m-points">—</b> charge points</div>
+      <div id="m-source" style="color:var(--faint)">source: —</div>
+    </div>
+  </header>
+
+  <div id="banner" class="banner" style="display:none"></div>
+
+  <div class="section-label">Overall — EDP vs each competitor (current)</div>
+  <div class="kpis" id="overall-kpis"></div>
+
+  <div id="clusters"></div>
+
+  <footer>
+    Data: MapaREVE (Red Eléctrica). Occupancy = (occupied + reserved) ÷ operational connectors; out-of-service excluded.
+    This page reads <code>data/readings.csv</code>.<span id="footnote"></span>
+  </footer>
+</div>
+
+<script>
+const OPS = {
+  edp:{name:"EDP",color:gv("--op-edp")}, iberdrola:{name:"Iberdrola",color:gv("--op-iberdrola")},
+  repsol:{name:"Repsol",color:gv("--op-repsol")}, endesa:{name:"Endesa",color:gv("--op-endesa")},
+  other:{name:"Other",color:gv("--op-other")},
+};
+const OP_ORDER = ["edp","iberdrola","repsol","endesa","other"];
+const IN_USE = new Set(["occupied","reserved"]);
+const OPERATIONAL = new Set(["available","occupied","reserved"]);
+
+function gv(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+function normOp(raw){ const s=(raw||"").toLowerCase();
+  if(s.includes("edp"))return"edp"; if(s.includes("iberdrola"))return"iberdrola";
+  if(s.includes("repsol"))return"repsol"; if(s.includes("endesa"))return"endesa"; return"other"; }
+function esc(s){ return (s||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+function fmt(d){ return d.toLocaleString([], {day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}); }
+
+async function load(){
+  try{
+    const res = await fetch("data/readings.csv",{cache:"no-store"});
+    if(res.ok){
+      const rows = Papa.parse((await res.text()).trim(),{header:true,skipEmptyLines:true}).data
+        .filter(r=>r.scraped_utc && r.status);
+      if(rows.length) return {rows, live:true};
+    }
+  }catch(e){}
+  return {rows:sampleData(), live:false};
+}
+
+// occupancy series for a set of rows: op -> {t -> {operational,inuse}}
+function series(rows){
+  const times=[...new Set(rows.map(r=>r.scraped_utc))].sort();
+  const byOp={}; for(const op of OP_ORDER) byOp[op]={};
+  for(const r of rows){ const op=normOp(r.operator), t=r.scraped_utc;
+    (byOp[op][t] ||= {operational:0,inuse:0});
+    if(OPERATIONAL.has(r.status)) byOp[op][t].operational++;
+    if(IN_USE.has(r.status)) byOp[op][t].inuse++;
+  }
+  const present=OP_ORDER.filter(op=>Object.keys(byOp[op]).length);
+  return {times, byOp, present};
+}
+function rate(c){ return (c && c.operational) ? c.inuse/c.operational : null; }
+
+function kpiCard(op, c, {lead=false}={}){
+  const r=rate(c); const pct=r==null?"—":Math.round(r*100);
+  const tag = op==="edp" ? '<span class="tag edp">EDP</span>' : (lead?'<span class="tag busiest">busiest</span>':'');
+  return `<div class="kpi ${op==="edp"?"edp":""} ${lead&&op!=="edp"?"lead":""}" data-op="${op}">
+    ${tag}
+    <div class="op"><span class="dot" style="background:${OPS[op].color}"></span>${OPS[op].name}</div>
+    <div class="val">${pct}<small>${r==null?"":"%"}</small></div>
+    <div class="det">${c?c.inuse:0}/${c?c.operational:0} in use</div></div>`;
+}
+
+function makeChart(canvas, S, latestTimes){
+  const labels=S.times.map(t=>new Date(t));
+  const datasets=S.present.map(op=>({
+    label:OPS[op].name,
+    data:S.times.map(t=>{const c=S.byOp[op][t]; const r=rate(c); return r==null?null:Math.round(r*100);}),
+    borderColor:OPS[op].color, backgroundColor:OPS[op].color+"22",
+    borderWidth:op==="edp"?3:2, pointRadius:0, pointHoverRadius:4, tension:.35, spanGaps:true, fill:op==="edp",
+  }));
+  const spanH=(new Date(S.times.at(-1))-new Date(S.times[0]))/36e5;
+  new Chart(canvas,{ type:"line", data:{labels,datasets}, options:{
+    responsive:true, maintainAspectRatio:false, interaction:{mode:"index",intersect:false},
+    scales:{
+      x:{type:"time",time:{unit:spanH>72?"day":"hour"},grid:{color:"rgba(255,255,255,.04)"},
+         ticks:{color:gv("--faint"),maxRotation:0,font:{family:"IBM Plex Mono",size:10}}},
+      y:{min:0,max:100,grid:{color:"rgba(255,255,255,.05)"},
+         ticks:{color:gv("--faint"),callback:v=>v+"%",font:{family:"IBM Plex Mono",size:10}}},
+    },
+    plugins:{ legend:{display:false}, tooltip:{ backgroundColor:"#0c1219", borderColor:gv("--line"), borderWidth:1,
+      titleColor:gv("--text"), bodyColor:gv("--muted"), titleFont:{family:"IBM Plex Mono",size:11}, bodyFont:{family:"Hanken Grotesk"},
+      callbacks:{ label:c=>` ${c.dataset.label}: ${c.parsed.y==null?"n/a":c.parsed.y+"%"}` } } },
+  }});
+}
+
+function render({rows,live}){
+  document.getElementById("m-source").textContent="source: "+(live?"live data/readings.csv":"SAMPLE DATA (preview)");
+  if(!live){ const b=document.getElementById("banner"); b.style.display="block";
+    b.textContent="Preview mode — generated sample data. Once deployed this fills with your real readings.";
+    document.getElementById("footnote").innerHTML=" Currently showing sample data (no live CSV found)."; }
+
+  const latest=[...new Set(rows.map(r=>r.scraped_utc))].sort().at(-1);
+  const latestRows=rows.filter(r=>r.scraped_utc===latest);
+
+  // ---- overall KPIs ----
+  const all=series(rows);
+  const overallLead=all.present.filter(op=>rate(all.byOp[op][latest])!=null)
+    .sort((a,b)=>rate(all.byOp[b][latest])-rate(all.byOp[a][latest]))[0];
+  document.getElementById("overall-kpis").innerHTML=
+    all.present.map(op=>kpiCard(op, all.byOp[op][latest], {lead:op===overallLead})).join("");
+
+  // ---- per cluster ----
+  const clusters=[...new Set(rows.map(r=>r.cluster).filter(Boolean))].sort();
+  const host=document.getElementById("clusters");
+  const charts=[];
+  clusters.forEach((cl,idx)=>{
+    const crows=rows.filter(r=>r.cluster===cl);
+    const S=series(crows);
+    const opsLine=S.present.map(op=>`<b style="color:${OPS[op].color}">${OPS[op].name}</b>`).join(" · ");
+    const clatest=crows.filter(r=>r.scraped_utc===latest);
+    const cLead=S.present.filter(op=>rate(S.byOp[op][latest])!=null)
+      .sort((a,b)=>rate(S.byOp[b][latest])-rate(S.byOp[a][latest]))[0];
+
+    // status grid by site within cluster
+    const locs={};
+    for(const r of clatest){ const key=r.location_id||r.location_label;
+      (locs[key] ||= {label:r.location_label||r.location_id, operator:r.operator, op:normOp(r.operator), points:[]});
+      if(r.charge_point_id) locs[key].points.push({id:r.charge_point_id,status:r.status,raw:r.status_raw}); }
+    const cards=Object.values(locs).sort((a,b)=>OP_ORDER.indexOf(a.op)-OP_ORDER.indexOf(b.op)).map(L=>{
+      const oper=L.points.filter(p=>OPERATIONAL.has(p.status)).length;
+      const inuse=L.points.filter(p=>IN_USE.has(p.status)).length;
+      const rt=oper?Math.round(inuse/oper*100)+"%":"n/a";
+      return `<div class="loc"><div class="lh"><span class="lname">${esc(L.label)}</span>
+        <span class="lop" style="color:${OPS[L.op].color}">${esc(L.operator||OPS[L.op].name)}</span></div>
+        <div class="lrate">occupancy ${rt} · ${inuse}/${oper} in use</div>
+        <div class="cps">${L.points.map(p=>`<div class="cp"><span class="id" title="${esc(p.id)}">${esc(p.id)}</span>
+          <span class="chip ${p.status}">${esc(p.raw||p.status)}</span></div>`).join("")}</div></div>`;
+    }).join("");
+
+    const cid="chart-"+idx;
+    const sec=document.createElement("section");
+    sec.innerHTML=`
+      <div class="cluster-head"><span class="n">${esc(cl)}</span><span class="ops">${opsLine}</span></div>
+      <div class="kpis">${S.present.map(op=>kpiCard(op,S.byOp[op][latest],{lead:op===cLead})).join("")}</div>
+      <div class="panel"><h3>Occupancy over time</h3>
+        <div class="legend">${S.present.map(op=>`<span><i style="background:${OPS[op].color}"></i>${OPS[op].name}</span>`).join("")}</div>
+        <div class="chartbox"><canvas id="${cid}"></canvas></div></div>
+      <div class="grid">${cards}</div>`;
+    host.appendChild(sec);
+    charts.push(()=>makeChart(document.getElementById(cid),S));
+  });
+  charts.forEach(fn=>fn());
+
+  document.getElementById("m-updated").textContent=fmt(new Date(latest));
+  document.getElementById("m-locs").textContent=new Set(latestRows.map(r=>r.location_id||r.location_label)).size;
+  document.getElementById("m-points").textContent=latestRows.filter(r=>r.charge_point_id).length;
+}
+
+// ---- sample data for preview only (mirrors locations.json) ------------------
+function sampleData(){
+  const cfg=[
+    {cluster:"Location 1", op:"Repsol",     label:"Repsol",          n:3},
+    {cluster:"Location 1", op:"EDP Charge", label:"EDP",             n:2},
+    {cluster:"Location 2", op:"Iberdrola",  label:"Iberdrola",       n:3},
+    {cluster:"Location 2", op:"Repsol",     label:"Repsol",          n:2},
+    {cluster:"Location 2", op:"EDP Charge", label:"EDP",             n:2},
+    {cluster:"Location 3", op:"Endesa",     label:"Endesa",          n:2},
+    {cluster:"Location 3", op:"Endesa",     label:"Endesa (site 2)", n:2},
+    {cluster:"Location 3", op:"EDP Charge", label:"EDP",             n:3},
+  ];
+  const prof={ "EDP Charge":[.28,.45], "Iberdrola":[.45,.38], "Repsol":[.55,.34], "Endesa":[.40,.30] };
+  const rows=[]; const now=Date.now(); const STEP=15*60*1000, N=48*4; let seed=11;
+  const rnd=()=>(seed=(seed*1103515245+12345)&0x7fffffff)/0x7fffffff;
+  for(let k=N-1;k>=0;k--){
+    const t=new Date(now-k*STEP); const iso=t.toISOString().replace(/\.\d+Z$/,"Z");
+    const hour=t.getHours()+t.getMinutes()/60; const day=Math.sin((hour-7)/24*2*Math.PI);
+    cfg.forEach((s,si)=>{ const [base,amp]=prof[s.op]; const pBusy=Math.max(0,Math.min(.95,base+amp*Math.max(0,day)));
+      for(let j=1;j<=s.n;j++){ let status="available",raw="Available"; const x=rnd();
+        if(x<0.04){status="out_of_service";raw="Out of service";}
+        else if(x<0.04+pBusy){status="occupied";raw="Occupied";}
+        rows.push({scraped_utc:iso, cluster:s.cluster, location_id:"loc"+si, location_label:s.label,
+          operator:s.op, charge_point_id:`ES*GFX*E0${1400+si*10+j}*${j}`, status_raw:raw, status:status,
+          power_kw:"50", connector:"CCS2"}); }
+    });
+  }
+  return rows;
+}
+
+load().then(render);
+</script>

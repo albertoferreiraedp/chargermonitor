@@ -1,0 +1,12 @@
+[
+  { "cluster": "Location 1", "operator": "Repsol",    "label": "Repsol",          "url": "https://www.mapareve.es/mapa-puntos-recarga/emplazamiento/ba42360e-676e-4a67-be7c-80a6582acf2e" },
+  { "cluster": "Location 1", "operator": "EDP Charge", "label": "EDP",             "url": "https://www.mapareve.es/mapa-puntos-recarga/emplazamiento/d96ba504-7922-4099-a3e1-3c9502cca625" },
+
+  { "cluster": "Location 2", "operator": "Iberdrola",  "label": "Iberdrola",       "url": "https://www.mapareve.es/mapa-puntos-recarga/emplazamiento/b216e575-62ac-4bf8-9e6a-4ab1b85624ef" },
+  { "cluster": "Location 2", "operator": "Repsol",     "label": "Repsol",          "url": "https://www.mapareve.es/mapa-puntos-recarga/emplazamiento/26b8bb98-07af-452d-b94d-9998e13bbddd" },
+  { "cluster": "Location 2", "operator": "EDP Charge", "label": "EDP",             "url": "https://www.mapareve.es/mapa-puntos-recarga/emplazamiento/5484f011-45cf-430e-896f-8445959a10d8" },
+
+  { "cluster": "Location 3", "operator": "Endesa",     "label": "Endesa",          "url": "https://www.mapareve.es/mapa-puntos-recarga/emplazamiento/2e99a555-de7d-4c97-82e3-ae72b4f993af" },
+  { "cluster": "Location 3", "operator": "Endesa",     "label": "Endesa (site 2)", "url": "https://www.mapareve.es/mapa-puntos-recarga/emplazamiento/f32a804f-51a4-4019-8fbf-50d03c86aa12" },
+  { "cluster": "Location 3", "operator": "EDP Charge", "label": "EDP",             "url": "https://www.mapareve.es/mapa-puntos-recarga/emplazamiento/95bacc7c-48db-4a44-87a8-32f8ad7d5231" }
+]
