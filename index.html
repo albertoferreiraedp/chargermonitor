@@ -144,6 +144,11 @@
 </div>
 
 <script>
+// ---- Ignore readings before this moment (the early 11:21 reading + the gap
+// before the scheduler kicked in would skew the time-weighted metric). ----
+// Written in YOUR local time. Set to "" to count everything again.
+const START_FROM = "2026-05-29T12:50";
+
 const OPS = {
   edp:{name:"EDP",color:gv("--op-edp")}, iberdrola:{name:"Iberdrola",color:gv("--op-iberdrola")},
   repsol:{name:"Repsol",color:gv("--op-repsol")}, endesa:{name:"Endesa",color:gv("--op-endesa")},
@@ -159,16 +164,20 @@ function normOp(raw){ const s=(raw||"").toLowerCase();
   if(s.includes("repsol"))return"repsol"; if(s.includes("endesa"))return"endesa"; return"other"; }
 function esc(s){ return (s||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
 function fmt(d){ return d.toLocaleString([], {day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}); }
-function dur(min){ if(min<1) return "<1m"; if(min<60) return Math.round(min)+"m";
+function dur(min){ if(!isFinite(min)) return "—"; if(min<1) return "<1m"; if(min<60) return Math.round(min)+"m";
   const h=Math.floor(min/60), m=Math.round(min%60); return m? `${h}h ${m}m` : `${h}h`; }
 
 async function load(){
   try{
     const res = await fetch("data/readings.csv",{cache:"no-store"});
     if(res.ok){
-      const rows = Papa.parse((await res.text()).trim(),{header:true,skipEmptyLines:true}).data
+      const raw = Papa.parse((await res.text()).trim(),{header:true,skipEmptyLines:true}).data
         .filter(r=>r.scraped_utc && r.status);
-      if(rows.length) return {rows, live:true};
+      if(raw.length){
+        const cut = START_FROM ? +new Date(START_FROM) : NaN;
+        const rows = isNaN(cut) ? raw : raw.filter(r=>+new Date(r.scraped_utc) >= cut);
+        return {rows, live:true};
+      }
     }
   }catch(e){}
   return {rows:sampleData(), live:false};
@@ -297,7 +306,7 @@ function render({rows,live}){
     cov("Cadence", cadence==null?"—":`~${cadence.toFixed(1)}<small> min</small>`) +
     cov("Coverage", cycles>1?dur(spanMin):"—") +
     cov("Samples / charger", `${avgSamples.toFixed(avgSamples<10?1:0)}`) +
-    cov("Last reading", `${dur(agoMin)}<small> ago</small>`, stale?"warn":"");
+    cov("Last reading", cycles? `${dur(agoMin)}<small> ago</small>` : "—", stale?"warn":"");
   if(live && cycles<3){
     const c=document.getElementById("collecting"); c.style.display="block";
     c.textContent = `Collecting data — ${cycles} extraction${cycles===1?"":"s"} so far. The occupancy-over-time charts fill in once a few 5-minute readings have accumulated.`;
@@ -359,7 +368,7 @@ function render({rows,live}){
   });
   charts.forEach(fn=>fn());
 
-  document.getElementById("m-updated").textContent=`${fmt(last)} (${dur(agoMin)} ago)`;
+  document.getElementById("m-updated").textContent= cycles? `${fmt(last)} (${dur(agoMin)} ago)` : "—";
   document.getElementById("m-locs").textContent=new Set(latestRows.map(r=>r.location_id||r.location_label)).size;
   document.getElementById("m-points").textContent=latestRows.filter(r=>r.charge_point_id).length;
 }
