@@ -138,7 +138,7 @@
   <div id="clusters"></div>
 
   <footer>
-    Data: MapaREVE (Red Eléctrica). Occupancy = time spent charging ÷ total time observed, since scraping began (cumulative).
+    Data: MapaREVE (Red Eléctrica). Occupancy = charging connector-time ÷ total connector-time observed (each operator's chargers pooled), counted from the cutoff onward.
     This page reads <code>data/readings.csv</code>.<span id="footnote"></span>
   </footer>
 </div>
@@ -206,7 +206,8 @@ function cumulativeOccupancy(rows){
   const {times,tMs,arrs,op}=pointArrays(rows);
   const ops=[...new Set(Object.values(op))];
   const byOp={}; const run={};
-  for(const o of ops){ byOp[o]={cum:new Array(times.length).fill(null),occ:0,tot:0,rate:null}; run[o]={occ:0,tot:0}; }
+  for(const o of ops){ byOp[o]={cum:new Array(times.length).fill(null),occ:0,tot:0,rate:null,n:0}; run[o]={occ:0,tot:0}; }
+  for(const id in op) byOp[op[id]].n++;
   for(let i=0;i<times.length;i++){
     if(i>0){ const d=tMs[i]-tMs[i-1];
       for(const id in arrs){ const s=arrs[id][i-1]; if(s===null) continue;
@@ -226,11 +227,16 @@ function pooledOccupancy(rows){
   return {rate: tot>0?occ/tot:null, occ, tot};
 }
 function hrs(ms){ return dur(ms/60000); }
+// compact time for KPI subtitle: 1 decimal under 10 min, else whole min / hours
+function tmin(ms){ const m=ms/60000; if(!isFinite(m)) return "—";
+  if(m<60) return (m<10 ? Math.round(m*10)/10 : Math.round(m))+"m"; return dur(m); }
 
-function kpiCard(op, o, {lead=false}={}){
+function kpiCard(op, o, {lead=false, coverageMin=null}={}){
   const r=o?o.rate:null; const pct=r==null?"—":Math.round(r*100);
   const tag = op==="edp" ? '<span class="tag edp">EDP</span>' : (lead?'<span class="tag busiest">busiest</span>':'');
-  const det = (o&&o.tot) ? `${hrs(o.occ)} charging of ${hrs(o.tot)}` : "no data yet";
+  const win = (coverageMin!=null && isFinite(coverageMin)) ? coverageMin : (o&&o.n? (o.tot/o.n)/60000 : NaN);
+  const chg = (o&&r!=null && isFinite(win)) ? r*win : NaN;
+  const det = (o&&o.tot&&o.n) ? `avg ${tmin(chg*60000)} of ${tmin(win*60000)} covered · ${o.n} charger${o.n===1?'':'s'}` : "no data yet";
   return `<div class="kpi ${op==="edp"?"edp":""} ${lead&&op!=="edp"?"lead":""}" data-op="${op}">
     ${tag}
     <div class="op"><span class="dot" style="background:${OPS[op].color}"></span>${OPS[op].name}</div>
@@ -320,7 +326,7 @@ function render({rows,live}){
   const overallLead=all.present.filter(op=>all.byOp[op].rate!=null)
     .sort((a,b)=>all.byOp[b].rate-all.byOp[a].rate)[0];
   document.getElementById("overall-kpis").innerHTML=
-    all.present.map(op=>kpiCard(op, all.byOp[op], {lead:op===overallLead})).join("");
+    all.present.map(op=>kpiCard(op, all.byOp[op], {lead:op===overallLead, coverageMin:spanMin})).join("");
   document.getElementById("overall-gaps").innerHTML=gapsHtml(all);
 
   // ---- per cluster ----
@@ -356,7 +362,7 @@ function render({rows,live}){
     const sec=document.createElement("section");
     sec.innerHTML=`
       <div class="cluster-head"><span class="n">${esc(cl)}</span><span class="ops">${opsLine}</span></div>
-      <div class="kpis">${S.present.map(op=>kpiCard(op,S.byOp[op],{lead:op===cLead})).join("")}</div>
+      <div class="kpis">${S.present.map(op=>kpiCard(op,S.byOp[op],{lead:op===cLead, coverageMin:spanMin})).join("")}</div>
       <div class="gaps">${gapsHtml(S)}</div>
       <div class="panel"><h3>Occupancy rate over time</h3>
         <p class="hint">How each operator's cumulative occupancy has evolved. Settles as more readings arrive.</p>
