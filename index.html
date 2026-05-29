@@ -6,6 +6,8 @@
 <title>Charger Occupancy — EDP vs neighbours by site</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Hanken+Grotesk:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
@@ -27,7 +29,7 @@
       linear-gradient(180deg,var(--bg),var(--bg-2));
     background-attachment:fixed; min-height:100vh;
   }
-  .wrap { max-width:1180px; margin:0 auto; padding:28px 22px 64px; }
+  .wrap { max-width:1680px; margin:0 auto; padding:24px 18px 56px; }
   header.top { display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap;
     border-bottom:1px solid var(--line); padding-bottom:18px; }
   .brand { display:flex; flex-direction:column; gap:4px; }
@@ -69,6 +71,17 @@
   .legend span{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
   .legend i{width:12px;height:12px;border-radius:3px;display:inline-block}
   .chartbox { height:260px; padding:4px 2px 8px; }
+  .mapbox { height:260px; border-radius:12px; overflow:hidden; border:1px solid var(--line); }
+  .cluster-row { display:grid; grid-template-columns:minmax(0,1.4fr) minmax(0,1fr); gap:14px; align-items:stretch; margin-top:14px; }
+  .cluster-row .panel { margin-top:0; display:flex; flex-direction:column; }
+  .cluster-row .mapbox { flex:1; min-height:260px; }
+  @media (max-width:860px){ .cluster-row { grid-template-columns:1fr; } }
+  .mapbox .leaflet-container { background:#0e141d; font-family:"Hanken Grotesk",sans-serif; }
+  .mapbox .leaflet-bar a, .mapbox .leaflet-control-zoom a { background:var(--panel); color:var(--text); border-color:var(--line); }
+  .mapbox .leaflet-tooltip { background:#0c1219; color:var(--text); border:1px solid var(--line); box-shadow:none; font-size:12px; }
+  .mapbox .leaflet-tooltip-top::before { border-top-color:var(--line); }
+  .mapbox .leaflet-control-attribution { background:rgba(10,14,20,.7); color:var(--faint); }
+  .mapbox .leaflet-control-attribution a { color:var(--muted); }
 
   .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:14px; margin-top:14px; }
   .loc { background:linear-gradient(180deg,var(--panel),var(--panel-2)); border:1px solid var(--line); border-radius:14px; padding:15px 16px; }
@@ -158,6 +171,22 @@ const OP_ORDER = ["edp","iberdrola","repsol","endesa","other"];
 const IN_USE = new Set(["occupied","reserved"]);
 const OPERATIONAL = new Set(["available","occupied","reserved"]);
 
+// Geocoded station coordinates [lat, lng], keyed by location id (UUID).
+// The "loc0..7" keys mirror the in-chat sample data so the preview shows maps too.
+const LOCATION_COORDS = {
+  "ba42360e-676e-4a67-be7c-80a6582acf2e": [40.357210, -3.773546], // L1 Repsol (charging station, C/ Álava)
+  "d96ba504-7922-4099-a3e1-3c9502cca625": [40.357267, -3.773335], // L1 EDP
+  "b216e575-62ac-4bf8-9e6a-4ab1b85624ef": [40.373121, -3.774225], // L2 Iberdrola
+  "26b8bb98-07af-452d-b94d-9998e13bbddd": [40.373841, -3.771685], // L2 Repsol
+  "5484f011-45cf-430e-896f-8445959a10d8": [40.373923, -3.773703], // L2 EDP
+  "2e99a555-de7d-4c97-82e3-ae72b4f993af": [41.395469,  2.148337], // L3 Endesa
+  "f32a804f-51a4-4019-8fbf-50d03c86aa12": [41.395469,  2.148337], // L3 Endesa 2 (same car park)
+  "95bacc7c-48db-4a44-87a8-32f8ad7d5231": [41.396306,  2.149704], // L3 EDP
+  "loc0":[40.357210,-3.773546],"loc1":[40.357267,-3.773335],"loc2":[40.373121,-3.774225],
+  "loc3":[40.373841,-3.771685],"loc4":[40.373923,-3.773703],"loc5":[41.395469,2.148337],
+  "loc6":[41.395469,2.148337],"loc7":[41.396306,2.149704],
+};
+
 function gv(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
 function normOp(raw){ const s=(raw||"").toLowerCase();
   if(s.includes("edp"))return"edp"; if(s.includes("iberdrola"))return"iberdrola";
@@ -244,20 +273,22 @@ function kpiCard(op, o, {lead=false, coverageMin=null}={}){
     <div class="det">${det}</div></div>`;
 }
 
+function tickLabel(t){ const d=new Date(t);
+  return d.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}); }
+
 function makeChart(canvas, S){
-  const labels=S.times.map(t=>new Date(t));
+  const labels=S.times.map(tickLabel);
   const datasets=S.present.map(op=>({
     label:OPS[op].name,
     data:S.byOp[op].cum.map(v=>v==null?null:Math.round(v*10)/10),
     borderColor:OPS[op].color, backgroundColor:OPS[op].color+"22",
     borderWidth:op==="edp"?3:2, pointRadius:0, pointHoverRadius:4, tension:.3, spanGaps:true, fill:op==="edp",
   }));
-  const spanH=(new Date(S.times.at(-1))-new Date(S.times[0]))/36e5;
   new Chart(canvas,{ type:"line", data:{labels,datasets}, options:{
     responsive:true, maintainAspectRatio:false, interaction:{mode:"index",intersect:false},
     scales:{
-      x:{type:"time",time:{unit:spanH>72?"day":"hour"},grid:{color:"rgba(255,255,255,.04)"},
-         ticks:{color:gv("--faint"),maxRotation:0,font:{family:"IBM Plex Mono",size:10}}},
+      x:{grid:{color:"rgba(255,255,255,.04)"},
+         ticks:{color:gv("--faint"),maxRotation:0,autoSkip:true,maxTicksLimit:8,font:{family:"IBM Plex Mono",size:10}}},
       y:{min:0,suggestedMax:100,grid:{color:"rgba(255,255,255,.05)"},
          ticks:{color:gv("--faint"),callback:v=>v+"%",font:{family:"IBM Plex Mono",size:10}}},
     },
@@ -265,6 +296,27 @@ function makeChart(canvas, S){
       titleColor:gv("--text"), bodyColor:gv("--muted"), titleFont:{family:"IBM Plex Mono",size:11}, bodyFont:{family:"Hanken Grotesk"},
       callbacks:{ label:c=>` ${c.dataset.label}: ${c.parsed.y==null?"n/a":c.parsed.y+"%"}` } } },
   }});
+}
+
+// Map of a cluster's stations (viz: where they are), brand-coloured pins.
+function makeMap(divId, locs){
+  if(typeof L==="undefined") return;
+  const pts=locs.map(loc=>({loc, c:LOCATION_COORDS[loc.key]})).filter(x=>x.c);
+  if(!pts.length) return;
+  const map=L.map(divId,{scrollWheelZoom:false, attributionControl:true});
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+    {maxZoom:20, subdomains:"abcd", attribution:"&copy; OpenStreetMap &copy; CARTO"}).addTo(map);
+  const latlngs=[];
+  pts.forEach(({loc,c})=>{
+    const color=OPS[loc.op].color;
+    L.circleMarker(c,{radius:loc.op==="edp"?10:8, color:"#fff", weight:2, fillColor:color, fillOpacity:1})
+      .addTo(map)
+      .bindTooltip(`<b style="color:${color}">${OPS[loc.op].name}</b> · ${esc(loc.label)}`,{direction:"top",offset:[0,-6]});
+    latlngs.push(c);
+  });
+  if(latlngs.length>1) map.fitBounds(latlngs,{padding:[45,45], maxZoom:16});
+  else map.setView(latlngs[0],16);
+  setTimeout(()=>map.invalidateSize(),60);
 }
 
 // EDP gap callouts (viz 5): EDP minus each competitor, in points.
@@ -304,6 +356,11 @@ function render({rows,live}){
     const k=(r.location_id||"")+"|"+r.charge_point_id; cpCount[k]=(cpCount[k]||0)+1; }
   const cpKeys=Object.keys(cpCount);
   const avgSamples = cpKeys.length ? cpKeys.reduce((s,k)=>s+cpCount[k],0)/cpKeys.length : 0;
+
+  // header meta (set early so it never depends on later chart rendering)
+  document.getElementById("m-updated").textContent= cycles? `${fmt(last)} (${dur(agoMin)} ago)` : "—";
+  document.getElementById("m-locs").textContent= cycles? new Set(latestRows.map(r=>r.location_id||r.location_label)).size : "—";
+  document.getElementById("m-points").textContent= cycles? latestRows.filter(r=>r.charge_point_id).length : "—";
 
   const cov=(l,v,cls="")=>`<div class="cov ${cls}"><span class="l">${l}</span><span class="v">${v}</span></div>`;
   document.getElementById("coverage").innerHTML =
@@ -358,25 +415,30 @@ function render({rows,live}){
           <span class="chip ${p.status}">${esc(p.raw||p.status)}</span></div>`).join("")}</div></div>`;
     }).join("");
 
-    const cid="chart-"+idx;
+    const cid="chart-"+idx, mid="map-"+idx;
+    const mapLocs=Object.values(locs).filter(L=>LOCATION_COORDS[L.key]);
+    const mapPanel = mapLocs.length ? `
+      <div class="panel"><h3>Where they are</h3>
+        <p class="hint">EDP vs neighbours — pins coloured by operator; hover for the name.</p>
+        <div class="mapbox" id="${mid}"></div></div>` : "";
+    const chartPanel = `
+      <div class="panel"><h3>Occupancy rate over time</h3>
+        <p class="hint">How each operator's cumulative occupancy has evolved. Settles as more readings arrive.</p>
+        <div class="legend">${S.present.map(op=>`<span><i style="background:${OPS[op].color}"></i>${OPS[op].name}</span>`).join("")}</div>
+        <div class="chartbox"><canvas id="${cid}"></canvas></div></div>`;
+    const mainRow = mapPanel ? `<div class="cluster-row">${chartPanel}${mapPanel}</div>` : chartPanel;
     const sec=document.createElement("section");
     sec.innerHTML=`
       <div class="cluster-head"><span class="n">${esc(cl)}</span><span class="ops">${opsLine}</span></div>
       <div class="kpis">${S.present.map(op=>kpiCard(op,S.byOp[op],{lead:op===cLead, coverageMin:spanMin})).join("")}</div>
       <div class="gaps">${gapsHtml(S)}</div>
-      <div class="panel"><h3>Occupancy rate over time</h3>
-        <p class="hint">How each operator's cumulative occupancy has evolved. Settles as more readings arrive.</p>
-        <div class="legend">${S.present.map(op=>`<span><i style="background:${OPS[op].color}"></i>${OPS[op].name}</span>`).join("")}</div>
-        <div class="chartbox"><canvas id="${cid}"></canvas></div></div>
+      ${mainRow}
       <div class="grid">${cards}</div>`;
     host.appendChild(sec);
     charts.push(()=>makeChart(document.getElementById(cid),S));
+    if(mapLocs.length) charts.push(()=>makeMap(mid, mapLocs));
   });
-  charts.forEach(fn=>fn());
-
-  document.getElementById("m-updated").textContent= cycles? `${fmt(last)} (${dur(agoMin)} ago)` : "—";
-  document.getElementById("m-locs").textContent=new Set(latestRows.map(r=>r.location_id||r.location_label)).size;
-  document.getElementById("m-points").textContent=latestRows.filter(r=>r.charge_point_id).length;
+  charts.forEach(fn=>{ try{ fn(); }catch(e){ console.error("chart render failed", e); } });
 }
 
 // ---- sample data for preview only (mirrors locations.json) ------------------
