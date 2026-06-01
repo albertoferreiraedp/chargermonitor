@@ -71,12 +71,21 @@
   .kpi .val { font-family:"Sora",sans-serif; font-weight:800; font-size:36px; letter-spacing:-.03em; margin-top:6px; line-height:1; }
   .kpi .val small{font-size:15px;color:var(--muted);font-weight:600;margin-left:2px}
   .kpi .det { font-family:"Manrope",monospace; font-size:11px; color:var(--faint); margin-top:8px; }
+  .kpi .kstats { display:flex; margin-top:12px; border-top:1px solid var(--line); padding-top:10px; }
+  .kpi .ks { flex:1; display:flex; flex-direction:column; gap:2px; min-width:0; }
+  .kpi .ks + .ks { border-left:1px solid var(--line); padding-left:11px; margin-left:11px; }
+  .kpi .kl { font-family:"Manrope",monospace; font-size:9px; letter-spacing:.1em; text-transform:uppercase; color:var(--faint); }
+  .kpi .kv { font-family:"Sora",sans-serif; font-weight:700; font-size:16px; color:var(--text); white-space:nowrap; }
+  .kpi .kv small { font-size:10px; color:var(--muted); font-weight:600; margin-left:1px; }
+  .kpi .kv.warn { color:var(--st-occupied); }
   .tag { font-family:"Manrope",monospace; font-size:9px; letter-spacing:.12em; text-transform:uppercase; padding:2px 6px; border-radius:5px; position:absolute; top:12px; right:12px; }
   .tag.busiest{ color:var(--bg); background:var(--st-occupied); }
   .tag.edp{ color:var(--bg); background:var(--accent); }
 
   .panel { background:linear-gradient(180deg,var(--panel),var(--panel-2)); border:1px solid var(--line); border-radius:16px; padding:16px 16px 6px; margin-top:14px; }
   .panel h3 { font-family:"Sora",sans-serif; font-weight:700; font-size:15px; margin:2px 4px 8px; letter-spacing:-.01em; color:var(--muted); }
+  .needbadge { font-family:"Manrope",monospace; font-size:9px; font-weight:700; letter-spacing:.08em; text-transform:uppercase;
+    color:var(--st-occupied); border:1px solid rgba(255,176,32,.4); background:rgba(255,176,32,.1); border-radius:5px; padding:2px 6px; margin-left:8px; vertical-align:middle; }
   .panel .hint { font-family:"Manrope",monospace; font-size:11px; color:var(--faint); margin:0 4px 10px; line-height:1.5; }
   .legend { display:flex; gap:14px; flex-wrap:wrap; margin:2px 4px 10px; }
   .legend span{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
@@ -84,9 +93,12 @@
   .chartbox { height:260px; padding:4px 2px 8px; }
   .mapbox { height:260px; border-radius:12px; overflow:hidden; border:1px solid var(--line); }
   .cluster-row { display:grid; grid-template-columns:minmax(0,1.4fr) minmax(0,1fr); gap:14px; align-items:stretch; margin-top:14px; }
+  .cluster-row.eq { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
+  .cluster-row.b { grid-template-columns:minmax(0,1fr) minmax(0,1.5fr); }
   .cluster-row .panel { margin-top:0; display:flex; flex-direction:column; }
   .cluster-row .mapbox { flex:1; min-height:260px; }
-  @media (max-width:860px){ .cluster-row { grid-template-columns:1fr; } }
+  .gridpanel .grid { margin-top:6px; }
+  @media (max-width:860px){ .cluster-row, .cluster-row.eq, .cluster-row.b { grid-template-columns:1fr; } }
   .mapbox .leaflet-container { background:#0e141d; font-family:"Manrope",sans-serif; }
   .mapbox .leaflet-bar a, .mapbox .leaflet-control-zoom a { background:var(--panel); color:var(--text); border-color:var(--line); }
   .mapbox .leaflet-tooltip { background:#0c1219; color:var(--text); border:1px solid var(--line); box-shadow:none; font-size:12px; }
@@ -281,7 +293,88 @@ function pooledOccupancy(rows){
     for(const id in arrs){ const s=arrs[id][i-1]; if(s===null) continue; tot+=d; if(s==="occupied") occ+=d; } }
   return {rate: tot>0?occ/tot:null, occ, tot};
 }
+
+// Day helpers (local time — Lisbon study window).
+function dayKey(ms){ const d=new Date(ms);
+  return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+function dayLabel(key){ const [y,m,dd]=key.split("-").map(Number);
+  return new Date(y,m-1,dd).toLocaleDateString([], {day:"numeric", month:"short"}); }
+
+// Daily occupancy per operator: charging-time ÷ observed-time within each calendar
+// day (pooled across that operator's chargers), plus cumulative-to-end-of-day.
+// Each 5-min interval is attributed to the day of its start.
+function dailyOccupancy(rows){
+  const {times,tMs,arrs,op}=pointArrays(rows);
+  const ops=[...new Set(Object.values(op))];
+  const per={}; for(const o of ops) per[o]={};   // per[op][dayKey] = {occ,tot}
+  const dayseen={};
+  for(let i=1;i<times.length;i++){
+    const d=tMs[i]-tMs[i-1];
+    const k=dayKey(tMs[i-1]); dayseen[k]=1;
+    for(const id in arrs){ const s=arrs[id][i-1]; if(s===null) continue;
+      const o=op[id]; (per[o][k] ||= {occ:0,tot:0});
+      per[o][k].tot+=d; if(s==="occupied") per[o][k].occ+=d; }
+  }
+  const days=Object.keys(dayseen).sort();
+  const labels=days.map(dayLabel);
+  const byOp={};
+  for(const o of ops){
+    const daily=[], cum=[]; let cocc=0, ctot=0;
+    for(const k of days){
+      const e=per[o][k];
+      daily.push(e&&e.tot>0 ? e.occ/e.tot*100 : null);
+      if(e){ cocc+=e.occ; ctot+=e.tot; }
+      cum.push(ctot>0 ? cocc/ctot*100 : null);
+    }
+    byOp[o]={daily, cum};
+  }
+  return {days, labels, byOp, present:OP_ORDER.filter(o=>ops.includes(o))};
+}
+
 function hrs(ms){ return dur(ms/60000); }
+
+// Uptime per operator: 1 − out-of-service time ÷ observed time (interval-integrated).
+function reliabilityByOp(rows){
+  const {times,tMs,arrs,op}=pointArrays(rows);
+  const acc={};
+  for(let i=1;i<times.length;i++){ const d=tMs[i]-tMs[i-1];
+    for(const id in arrs){ const s=arrs[id][i-1]; if(s===null) continue;
+      const o=op[id]; (acc[o] ||= {oos:0,tot:0}); acc[o].tot+=d; if(s==="out_of_service") acc[o].oos+=d; } }
+  const byOp={}; for(const o in acc){ const a=acc[o];
+    byOp[o]={ uptime: a.tot>0 ? (a.tot-a.oos)/a.tot : null, oosPct: a.tot>0 ? a.oos/a.tot : null }; }
+  return byOp;
+}
+
+// Power (avg kW per charge point) per operator, from the latest reading of each
+// charge point.
+function specsByOp(rows){
+  const latest={};
+  for(const r of rows){ if(!r.charge_point_id) continue;
+    const id=(r.location_id||"")+"|"+r.charge_point_id; const t=+new Date(r.scraped_utc);
+    if(!latest[id] || t>=latest[id].t){
+      const power=parseFloat(String(r.power_kw||"").replace(/[^0-9.]/g,""));
+      latest[id]={op:normOp(r.operator), t, power:isFinite(power)?power:null}; } }
+  const agg={};
+  for(const id in latest){ const e=latest[id]; (agg[e.op] ||= {pw:[]});
+    if(e.power!=null) agg[e.op].pw.push(e.power); }
+  const avg=a=>a.length? a.reduce((x,y)=>x+y,0)/a.length : null;
+  const byOp={}; for(const o in agg) byOp[o]={ kw:avg(agg[o].pw) };
+  return byOp;
+}
+
+// Hour-of-day occupancy profile per operator: occupancy% per clock hour, pooled
+// across all observed days (interval attributed to the hour it starts in, local time).
+function hourlyOccupancy(rows){
+  const {times,tMs,arrs,op}=pointArrays(rows);
+  const ops=[...new Set(Object.values(op))];
+  const occ={}, tot={};
+  for(const o of ops){ occ[o]=new Array(24).fill(0); tot[o]=new Array(24).fill(0); }
+  for(let i=1;i<times.length;i++){ const d=tMs[i]-tMs[i-1]; const h=new Date(tMs[i-1]).getHours();
+    for(const id in arrs){ const s=arrs[id][i-1]; if(s===null) continue;
+      const o=op[id]; tot[o][h]+=d; if(s==="occupied") occ[o][h]+=d; } }
+  const byOp={}; for(const o of ops) byOp[o]=occ[o].map((v,h)=> tot[o][h]>0 ? v/tot[o][h]*100 : null);
+  return {byOp, present:OP_ORDER.filter(o=>ops.includes(o))};
+}
 function opLogo(op){
   const src=OPERATOR_LOGOS[op];
   const wm=`<b style="color:${OPS[op].color}">${OPS[op].name}</b>`;
@@ -292,41 +385,77 @@ function opLogo(op){
 function tmin(ms){ const m=ms/60000; if(!isFinite(m)) return "—";
   if(m<60) return (m<10 ? Math.round(m*10)/10 : Math.round(m))+"m"; return dur(m); }
 
-function kpiCard(op, o, {lead=false, coverageMin=null}={}){
+function kpiCard(op, o, {lead=false, coverageMin=null, kw=null, uptime=null}={}){
   const r=o?o.rate:null; const pct=r==null?"—":Math.round(r*100);
   const tag = op==="edp" ? '<span class="tag edp">EDP</span>' : (lead?'<span class="tag busiest">busiest</span>':'');
   const win = (coverageMin!=null && isFinite(coverageMin)) ? coverageMin : (o&&o.n? (o.tot/o.n)/60000 : NaN);
   const chg = (o&&r!=null && isFinite(win)) ? r*win : NaN;
   const det = (o&&o.tot&&o.n) ? `avg ${tmin(chg*60000)} of ${tmin(win*60000)} covered · ${o.n} charger${o.n===1?'':'s'}` : "no data yet";
+  const kwTxt = (kw!=null && isFinite(kw)) ? Math.round(kw)+'<small>kW</small>' : '—';
+  const upV = (uptime!=null && isFinite(uptime)) ? Math.round(uptime*100) : null;
+  const upTxt = upV==null ? '—' : upV+'<small>%</small>';
+  const upWarn = (upV!=null && upV<95) ? ' warn' : '';
+  const stats = `<div class="kstats">
+    <div class="ks"><span class="kl">Avg power</span><span class="kv">${kwTxt}</span></div>
+    <div class="ks"><span class="kl">Uptime</span><span class="kv${upWarn}">${upTxt}</span></div></div>`;
   return `<div class="kpi ${op==="edp"?"edp":""} ${lead&&op!=="edp"?"lead":""}" data-op="${op}">
     ${tag}
     <div class="op">${opLogo(op)}</div>
     <div class="val">${pct}<small>${r==null?"":"%"}</small></div>
-    <div class="det">${det}</div></div>`;
+    <div class="det">${det}</div>
+    ${stats}</div>`;
 }
 
 function tickLabel(t){ const d=new Date(t);
   return d.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}); }
 
-function makeChart(canvas, S){
-  const labels=S.times.map(tickLabel);
-  const datasets=S.present.map(op=>({
-    label:OPS[op].name,
-    data:S.byOp[op].cum.map(v=>v==null?null:Math.round(v*10)/10),
-    borderColor:OPS[op].color, backgroundColor:OPS[op].color+"22",
-    borderWidth:op==="edp"?3:2, pointRadius:0, pointHoverRadius:4, tension:.3, spanGaps:true, fill:op==="edp",
-  }));
-  new Chart(canvas,{ type:"line", data:{labels,datasets}, options:{
+function makeChart(canvas, D){
+  const labels=D.labels;
+  // daily occupancy — grouped bars (one per operator per day)
+  const datasets=D.present.map(op=>{
+    const c=OPS[op].color;
+    return {
+      type:"bar", label:OPS[op].name,
+      data:D.byOp[op].daily.map(v=>v==null?null:Math.round(v*10)/10),
+      backgroundColor:c+(op==="edp"?"e0":"a6"), borderColor:c, borderWidth:op==="edp"?1.5:1,
+      borderRadius:3, categoryPercentage:.74, barPercentage:.92,
+    };
+  });
+  new Chart(canvas,{ data:{labels,datasets}, options:{
     responsive:true, maintainAspectRatio:false, interaction:{mode:"index",intersect:false},
     scales:{
       x:{grid:{color:"rgba(255,255,255,.04)"},
-         ticks:{color:gv("--faint"),maxRotation:0,autoSkip:true,maxTicksLimit:8,font:{family:"Manrope",size:10}}},
+         ticks:{color:gv("--faint"),maxRotation:0,autoSkip:false,font:{family:"Manrope",size:10}}},
       y:{min:0,suggestedMax:100,grid:{color:"rgba(255,255,255,.05)"},
          ticks:{color:gv("--faint"),callback:v=>v+"%",font:{family:"Manrope",size:10}}},
     },
     plugins:{ legend:{display:false}, tooltip:{ backgroundColor:"#0c1219", borderColor:gv("--line"), borderWidth:1,
       titleColor:gv("--text"), bodyColor:gv("--muted"), titleFont:{family:"Manrope",size:11}, bodyFont:{family:"Manrope"},
       callbacks:{ label:c=>` ${c.dataset.label}: ${c.parsed.y==null?"n/a":c.parsed.y+"%"}` } } },
+  }});
+}
+
+// Time-of-day occupancy profile — line per operator, x = clock hour.
+function makeHourChart(canvas, H){
+  const labels=Array.from({length:24},(_,h)=> h%6===0 ? String(h).padStart(2,"0")+"h" : "");
+  const datasets=H.present.map(op=>({
+    label:OPS[op].name,
+    data:H.byOp[op].map(v=>v==null?null:Math.round(v*10)/10),
+    borderColor:OPS[op].color, backgroundColor:OPS[op].color+"22",
+    borderWidth:op==="edp"?3:2, pointRadius:0, pointHoverRadius:4, tension:.4, spanGaps:true, fill:op==="edp",
+  }));
+  new Chart(canvas,{ type:"line", data:{labels,datasets}, options:{
+    responsive:true, maintainAspectRatio:false, interaction:{mode:"index",intersect:false},
+    scales:{
+      x:{grid:{color:"rgba(255,255,255,.04)"},
+         ticks:{color:gv("--faint"),maxRotation:0,autoSkip:false,font:{family:"Manrope",size:10}}},
+      y:{min:0,suggestedMax:100,grid:{color:"rgba(255,255,255,.05)"},
+         ticks:{color:gv("--faint"),callback:v=>v+"%",font:{family:"Manrope",size:10}}},
+    },
+    plugins:{ legend:{display:false}, tooltip:{ backgroundColor:"#0c1219", borderColor:gv("--line"), borderWidth:1,
+      titleColor:gv("--text"), bodyColor:gv("--muted"), titleFont:{family:"Manrope",size:11}, bodyFont:{family:"Manrope"},
+      callbacks:{ title:items=>{ const h=items[0].dataIndex; return String(h).padStart(2,"0")+":00–"+String((h+1)%24).padStart(2,"0")+":00"; },
+        label:c=>` ${c.dataset.label}: ${c.parsed.y==null?"n/a":c.parsed.y+"%"}` } } },
   }});
 }
 
@@ -413,10 +542,12 @@ function render({rows,live}){
 
   // ---- overall KPIs (cumulative occupancy per operator) ----
   const all=cumulativeOccupancy(rows);
+  const allRel=reliabilityByOp(rows), allSpec=specsByOp(rows);
   const overallLead=all.present.filter(op=>all.byOp[op].rate!=null)
     .sort((a,b)=>all.byOp[b].rate-all.byOp[a].rate)[0];
   document.getElementById("overall-kpis").innerHTML=
-    all.present.map(op=>kpiCard(op, all.byOp[op], {lead:op===overallLead, coverageMin:spanMin})).join("");
+    all.present.map(op=>kpiCard(op, all.byOp[op], {lead:op===overallLead, coverageMin:spanMin,
+      kw:allSpec[op]&&allSpec[op].kw, uptime:allRel[op]&&allRel[op].uptime})).join("");
   document.getElementById("overall-gaps").innerHTML=gapsHtml(all);
 
   // executive insight line
@@ -461,27 +592,39 @@ function render({rows,live}){
           <span class="chip ${p.status}">${esc(p.raw||p.status)}</span></div>`).join("")}</div></div>`;
     }).join("");
 
-    const cid="chart-"+idx, mid="map-"+idx;
+    const cid="chart-"+idx, hid="hour-"+idx, mid="map-"+idx;
     const mapLocs=Object.values(locs).filter(L=>LOCATION_COORDS[L.key]);
+    const cRel=reliabilityByOp(crows), cSpec=specsByOp(crows);
+    const legend=`<div class="legend">${S.present.map(op=>`<span><i style="background:${OPS[op].color}"></i>${OPS[op].name}</span>`).join("")}</div>`;
+    const dailyPanel = `
+      <div class="panel"><h3>Daily occupancy</h3>
+        <p class="hint">Each day's occupancy per operator (charging time ÷ observed time, chargers pooled).</p>
+        ${legend}<div class="chartbox"><canvas id="${cid}"></canvas></div></div>`;
+    const hourThin = !(spanMin >= 24*60);
+    const hourPanel = `
+      <div class="panel"><h3>Time-of-day profile${hourThin?'<span class="needbadge">needs ≥1 day</span>':''}</h3>
+        <p class="hint">Average occupancy by clock hour across the study — shows peak height, timing &amp; idle hours.</p>
+        ${legend}<div class="chartbox"><canvas id="${hid}"></canvas></div></div>`;
     const mapPanel = mapLocs.length ? `
       <div class="panel"><h3>Where they are</h3>
-        <p class="hint">EDP vs neighbours — pins coloured by operator; hover for the name.</p>
+        <p class="hint">EDP vs competitors — pins coloured by operator; hover for the name.</p>
         <div class="mapbox" id="${mid}"></div></div>` : "";
-    const chartPanel = `
-      <div class="panel"><h3>Occupancy rate over time</h3>
-        <p class="hint">How each operator's cumulative occupancy has evolved. Settles as more readings arrive.</p>
-        <div class="legend">${S.present.map(op=>`<span><i style="background:${OPS[op].color}"></i>${OPS[op].name}</span>`).join("")}</div>
-        <div class="chartbox"><canvas id="${cid}"></canvas></div></div>`;
-    const mainRow = mapPanel ? `<div class="cluster-row">${chartPanel}${mapPanel}</div>` : chartPanel;
+    const gridPanel = `
+      <div class="panel gridpanel"><h3>Live status by site</h3>
+        <div class="grid">${cards}</div></div>`;
+    const chartsRow = `<div class="cluster-row eq">${dailyPanel}${hourPanel}</div>`;
+    const bottomRow = mapPanel ? `<div class="cluster-row b">${mapPanel}${gridPanel}</div>` : gridPanel;
     const sec=document.createElement("section");
     sec.innerHTML=`
       <div class="cluster-head"><span class="n">${esc(cl)}</span><span class="ops">${opsLine}</span></div>
-      <div class="kpis">${S.present.map(op=>kpiCard(op,S.byOp[op],{lead:op===cLead, coverageMin:spanMin})).join("")}</div>
+      <div class="kpis">${S.present.map(op=>kpiCard(op,S.byOp[op],{lead:op===cLead, coverageMin:spanMin,
+        kw:cSpec[op]&&cSpec[op].kw, uptime:cRel[op]&&cRel[op].uptime})).join("")}</div>
       <div class="gaps">${gapsHtml(S)}</div>
-      ${mainRow}
-      <div class="grid">${cards}</div>`;
+      ${chartsRow}
+      ${bottomRow}`;
     host.appendChild(sec);
-    charts.push(()=>makeChart(document.getElementById(cid),S));
+    charts.push(()=>makeChart(document.getElementById(cid), dailyOccupancy(crows)));
+    charts.push(()=>makeHourChart(document.getElementById(hid), hourlyOccupancy(crows)));
     if(mapLocs.length) charts.push(()=>makeMap(mid, mapLocs));
   });
   charts.forEach(fn=>{ try{ fn(); }catch(e){ console.error("chart render failed", e); } });
@@ -500,6 +643,7 @@ function sampleData(){
     {cluster:"Location 3", op:"EDP Charge", label:"EDP",             n:3},
   ];
   const prof={ "EDP Charge":[.28,.45], "Iberdrola":[.45,.38], "Repsol":[.55,.34], "Endesa":[.40,.30] };
+  const spec={ "EDP Charge":{kw:"50"}, "Iberdrola":{kw:"150"}, "Repsol":{kw:"50"}, "Endesa":{kw:"22"} };
   const rows=[]; const now=Date.now(); const STEP=15*60*1000, N=48*4; let seed=11;
   const rnd=()=>(seed=(seed*1103515245+12345)&0x7fffffff)/0x7fffffff;
   for(let k=N-1;k>=0;k--){
@@ -511,7 +655,7 @@ function sampleData(){
         else if(x<0.04+pBusy){status="occupied";raw="Occupied";}
         rows.push({scraped_utc:iso, cluster:s.cluster, location_id:"loc"+si, location_label:s.label,
           operator:s.op, charge_point_id:`ES*GFX*E0${1400+si*10+j}*${j}`, status_raw:raw, status:status,
-          power_kw:"50", connector:"CCS2"}); }
+          power_kw:spec[s.op].kw, connector:"CCS2"}); }
     });
   }
   return rows;
