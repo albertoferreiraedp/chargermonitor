@@ -147,13 +147,15 @@
   footer { color:var(--faint); font-size:12px; margin-top:34px; border-top:1px solid var(--line); padding-top:14px; }
   code { font-family:"Manrope",monospace; color:var(--muted); }
 
-  /* overall power bands */
-  #overall-bands { margin-top:6px; }
-  .band + .band { margin-top:26px; }
-  .band-head { display:flex; align-items:baseline; gap:12px; margin:0 0 12px; padding-bottom:7px; border-bottom:1px dashed var(--line); }
+  /* overall power bands — three side-by-side columns */
+  #overall-bands { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; align-items:start; margin-top:6px; }
+  .band { min-width:0; }
+  .band-head { display:flex; align-items:baseline; gap:10px; margin:0 0 12px; padding-bottom:7px; border-bottom:1px dashed var(--line); }
   .band-n { font-family:"Sora",sans-serif; font-weight:700; font-size:18px; letter-spacing:-.01em; color:var(--text); }
   .band-sub { font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--faint); }
-  .band-ops { margin-left:auto; font-size:13px; color:var(--muted); }
+  .band .kpis { grid-template-columns:1fr; gap:12px; }
+  .band .gaps { margin:12px 0 0; }
+  @media (max-width:900px){ #overall-bands { grid-template-columns:1fr; } }
 </style>
 
 <div class="wrap">
@@ -598,12 +600,11 @@ function render({rows,live}){
     const bb=byBand[b]; if(!bb) continue;
     const present=bb.present; if(!present.length) continue;
     const lead=present.filter(o=>bb.byOp[o].rate!=null).sort((a,c)=>bb.byOp[c].rate-bb.byOp[a].rate)[0];
-    const opsLine=present.map(o=>`<b style="color:${OPS[o].color}">${OPS[o].name}</b>`).join(" · ");
     const cards=present.map(o=>kpiCard(o, bb.byOp[o], {lead:o===lead, coverageMin:spanMin,
       kw:bb.byOp[o].kw, uptime:bb.byOp[o].uptime})).join("");
     bandHtml += `<div class="band">
       <div class="band-head"><span class="band-n">${BAND_META[b].label}</span>
-        <span class="band-sub">${BAND_META[b].sub}</span><span class="band-ops">${opsLine}</span></div>
+        <span class="band-sub">${BAND_META[b].sub}</span></div>
       <div class="kpis">${cards}</div>
       <div class="gaps">${gapsHtml(bb)}</div></div>`;
   }
