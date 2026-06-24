@@ -163,6 +163,25 @@
   .bmeta.warn { color:var(--st-occupied); }
   .bval { font-family:"Sora",sans-serif; font-weight:800; font-size:30px; line-height:1; letter-spacing:-.03em; color:var(--text); white-space:nowrap; }
   .bval small { font-size:.46em; color:var(--muted); font-weight:700; margin-left:1px; }
+
+  /* dashboard zones — overall benchmark (framed) vs per-location */
+  .overall-zone{
+    background:
+      radial-gradient(130% 150% at 0% 0%, rgba(41,255,82,.07), rgba(18,26,37,0) 55%),
+      linear-gradient(180deg, rgba(41,255,82,.045), rgba(18,26,37,.02));
+    border:1px solid rgba(41,255,82,.30); border-radius:18px; padding:16px 20px 20px;
+    box-shadow:0 22px 60px -34px rgba(41,255,82,.45);
+  }
+  .zone-eyebrow{ display:flex; align-items:center; gap:12px; margin:0 0 16px; flex-wrap:wrap; }
+  .zone-eyebrow .bar{ width:4px; height:22px; border-radius:3px; background:var(--accent); box-shadow:0 0 12px rgba(41,255,82,.6); }
+  .zone-eyebrow .zt{ font-family:"Sora",sans-serif; font-weight:800; font-size:15px; letter-spacing:.07em; text-transform:uppercase; color:var(--accent); }
+  .zone-eyebrow .zs{ font-size:12px; color:var(--faint); letter-spacing:.02em; }
+  .zone-eyebrow .chip{ margin-left:auto; font-family:"Manrope",monospace; font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--accent); border:1px solid rgba(41,255,82,.4); border-radius:20px; padding:3px 12px; }
+  .zone-divider{ border:0; border-top:1px dashed var(--line); margin:30px 0 22px; }
+  .zone-below{ display:flex; align-items:baseline; gap:11px; margin:0 0 16px; flex-wrap:wrap; }
+  .zone-below .zt{ font-family:"Sora",sans-serif; font-weight:800; font-size:15px; letter-spacing:.07em; text-transform:uppercase; color:#5b8def; }
+  .zone-below .zs{ font-size:12px; color:var(--faint); }
+  @media(max-width:560px){ .overall-zone{ padding:14px 14px 16px; } }
   .band .gaps { margin:12px 0 0; }
   @media (max-width:900px){ #overall-bands { grid-template-columns:1fr; } }
 </style>
@@ -191,8 +210,13 @@
   <div class="coverage" id="coverage"></div>
   <div id="collecting" class="collecting" style="display:none"></div>
 
-  <div class="section-label">Overall — like-for-like by charger power</div>
-  <div id="overall-bands"></div>
+  <div class="overall-zone">
+    <div class="zone-eyebrow"><span class="bar"></span><span class="zt">Overall analysis</span><span class="zs">like-for-like by charger power</span><span class="chip">Benchmark</span></div>
+    <div id="overall-bands"></div>
+  </div>
+
+  <hr class="zone-divider">
+  <div class="zone-below"><span class="zt">By location</span><span class="zs">site-by-site detail</span></div>
 
   <div id="clusters"></div>
 
