@@ -153,7 +153,16 @@
   .band-head { display:flex; align-items:baseline; gap:10px; margin:0 0 12px; padding-bottom:7px; border-bottom:1px dashed var(--line); }
   .band-n { font-family:"Sora",sans-serif; font-weight:700; font-size:18px; letter-spacing:-.01em; color:var(--text); }
   .band-sub { font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--faint); }
-  .band .kpis { grid-template-columns:1fr; gap:12px; }
+  .band .brows { background:linear-gradient(180deg,var(--panel),var(--panel-2)); border:1px solid var(--line); border-radius:14px; padding:2px 16px; }
+  .brow { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:12px 0; }
+  .brow + .brow { border-top:1px solid var(--line); }
+  .bl { display:flex; flex-direction:column; gap:5px; min-width:0; }
+  .btop { display:flex; align-items:center; gap:8px; }
+  .btop .tag { position:static; top:auto; right:auto; }
+  .bmeta { font-family:"Manrope",monospace; font-size:11px; color:var(--faint); }
+  .bmeta.warn { color:var(--st-occupied); }
+  .bval { font-family:"Sora",sans-serif; font-weight:800; font-size:30px; line-height:1; letter-spacing:-.03em; color:var(--text); white-space:nowrap; }
+  .bval small { font-size:.46em; color:var(--muted); font-weight:700; margin-left:1px; }
   .band .gaps { margin:12px 0 0; }
   @media (max-width:900px){ #overall-bands { grid-template-columns:1fr; } }
 </style>
@@ -458,6 +467,22 @@ function kpiCard(op, o, {lead=false, coverageMin=null, kw=null, uptime=null}={})
     ${stats}</div>`;
 }
 
+// Compact comparison row for the overall power bands (Option A) — reuses the real logos.
+function bandRow(op, o, {lead=false}={}){
+  const r=o?o.rate:null; const pct=r==null?"—":Math.round(r*100);
+  const tag = op==="edp" ? '<span class="tag edp">EDP</span>' : (lead?'<span class="tag busiest">busiest</span>':'');
+  const parts=[];
+  if(o&&o.kw!=null&&isFinite(o.kw)) parts.push(Math.round(o.kw)+" kW");
+  const upV=(o&&o.uptime!=null&&isFinite(o.uptime))?Math.round(o.uptime*100):null;
+  if(upV!=null) parts.push(upV+"% uptime");
+  if(o&&o.n) parts.push(o.n+" charger"+(o.n===1?"":"s"));
+  const warn=(upV!=null&&upV<95)?" warn":"";
+  return `<div class="brow${op==="edp"?" edp":""}" data-op="${op}">
+    <div class="bl"><div class="btop">${opLogo(op)}${tag}</div>
+      <div class="bmeta${warn}">${parts.join(" · ")||"no data yet"}</div></div>
+    <div class="bval">${pct}<small>${r==null?"":"%"}</small></div></div>`;
+}
+
 function tickLabel(t){ const d=new Date(t);
   return d.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}); }
 
@@ -600,12 +625,11 @@ function render({rows,live}){
     const bb=byBand[b]; if(!bb) continue;
     const present=bb.present; if(!present.length) continue;
     const lead=present.filter(o=>bb.byOp[o].rate!=null).sort((a,c)=>bb.byOp[c].rate-bb.byOp[a].rate)[0];
-    const cards=present.map(o=>kpiCard(o, bb.byOp[o], {lead:o===lead, coverageMin:spanMin,
-      kw:bb.byOp[o].kw, uptime:bb.byOp[o].uptime})).join("");
+    const brows=present.map(o=>bandRow(o, bb.byOp[o], {lead:o===lead})).join("");
     bandHtml += `<div class="band">
       <div class="band-head"><span class="band-n">${BAND_META[b].label}</span>
         <span class="band-sub">${BAND_META[b].sub}</span></div>
-      <div class="kpis">${cards}</div>
+      <div class="brows">${brows}</div>
       <div class="gaps">${gapsHtml(bb)}</div></div>`;
   }
   document.getElementById("overall-bands").innerHTML = bandHtml ||
