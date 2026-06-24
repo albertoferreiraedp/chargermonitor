@@ -146,6 +146,14 @@
   .banner { font-family:"Manrope",monospace; font-size:12px; color:var(--st-occupied); background:rgba(255,176,32,.08); border:1px solid rgba(255,176,32,.25); border-radius:10px; padding:9px 13px; margin-bottom:18px; }
   footer { color:var(--faint); font-size:12px; margin-top:34px; border-top:1px solid var(--line); padding-top:14px; }
   code { font-family:"Manrope",monospace; color:var(--muted); }
+
+  /* overall power bands */
+  #overall-bands { margin-top:6px; }
+  .band + .band { margin-top:26px; }
+  .band-head { display:flex; align-items:baseline; gap:12px; margin:0 0 12px; padding-bottom:7px; border-bottom:1px dashed var(--line); }
+  .band-n { font-family:"Sora",sans-serif; font-weight:700; font-size:18px; letter-spacing:-.01em; color:var(--text); }
+  .band-sub { font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--faint); }
+  .band-ops { margin-left:auto; font-size:13px; color:var(--muted); }
 </style>
 
 <div class="wrap">
@@ -172,9 +180,8 @@
   <div class="coverage" id="coverage"></div>
   <div id="collecting" class="collecting" style="display:none"></div>
 
-  <div class="section-label">Overall — cumulative occupancy since recording began</div>
-  <div class="kpis" id="overall-kpis"></div>
-  <div class="gaps" id="overall-gaps"></div>
+  <div class="section-label">Overall — like-for-like by charger power</div>
+  <div id="overall-bands"></div>
 
   <div id="clusters"></div>
 
@@ -190,6 +197,8 @@
 // before the scheduler kicked in would skew the time-weighted metric). ----
 // Written in YOUR local time. Set to "" to count everything again.
 const START_FROM = "2026-05-29T12:50";
+// Daily-occupancy charts show only the most recent N days (rolling window).
+const DAILY_WINDOW_DAYS = 14;
 
 const OPS = {
   edp:{name:"EDP",color:gv("--op-edp")}, iberdrola:{name:"Iberdrola",color:gv("--op-iberdrola")},
@@ -315,12 +324,11 @@ function dailyOccupancy(rows){
       const o=op[id]; (per[o][k] ||= {occ:0,tot:0});
       per[o][k].tot+=d; if(s==="occupied") per[o][k].occ+=d; }
   }
-  const days=Object.keys(dayseen).sort();
-  const labels=days.map(dayLabel);
+  const allDays=Object.keys(dayseen).sort();
   const byOp={};
   for(const o of ops){
     const daily=[], cum=[]; let cocc=0, ctot=0;
-    for(const k of days){
+    for(const k of allDays){
       const e=per[o][k];
       daily.push(e&&e.tot>0 ? e.occ/e.tot*100 : null);
       if(e){ cocc+=e.occ; ctot+=e.tot; }
@@ -328,6 +336,11 @@ function dailyOccupancy(rows){
     }
     byOp[o]={daily, cum};
   }
+  // keep only the most recent DAILY_WINDOW_DAYS days
+  const start = allDays.length>DAILY_WINDOW_DAYS ? allDays.length-DAILY_WINDOW_DAYS : 0;
+  const days=allDays.slice(start);
+  const labels=days.map(dayLabel);
+  for(const o of ops){ byOp[o]={daily:byOp[o].daily.slice(start), cum:byOp[o].cum.slice(start)}; }
   return {days, labels, byOp, present:OP_ORDER.filter(o=>ops.includes(o))};
 }
 
@@ -360,6 +373,43 @@ function specsByOp(rows){
   const avg=a=>a.length? a.reduce((x,y)=>x+y,0)/a.length : null;
   const byOp={}; for(const o in agg) byOp[o]={ kw:avg(agg[o].pw) };
   return byOp;
+}
+
+// ---- Like-for-like by charger power -----------------------------------------
+// Bucket each charge point by its rated power, then pool occupancy per
+// (operator × power band) so EDP is compared only against competitors that run
+// chargers of the same power.
+function bandOf(p){ if(p==null||!isFinite(p)) return null;
+  if(p<=11) return "7"; if(p<=35) return "22"; return "50"; }
+function powerByPoint(rows){
+  const latest={};
+  for(const r of rows){ if(!r.charge_point_id) continue;
+    const id=(r.location_id||"")+"|"+r.charge_point_id; const t=+new Date(r.scraped_utc);
+    if(!latest[id] || t>=latest[id].t){
+      const power=parseFloat(String(r.power_kw||"").replace(/[^0-9.]/g,""));
+      latest[id]={t, power:isFinite(power)?power:null}; } }
+  const out={}; for(const id in latest) out[id]=latest[id].power; return out;
+}
+function occupancyByPower(rows){
+  const {times,tMs,arrs,op}=pointArrays(rows);
+  const pw=powerByPoint(rows);
+  const band={}; for(const id in op) band[id]=bandOf(pw[id]);
+  const acc={};
+  for(const id in op){ const b=band[id]; if(!b) continue; const o=op[id];
+    (acc[b] ||= {}); (acc[b][o] ||= {occ:0,tot:0,oos:0,n:0,pw:[]});
+    acc[b][o].n++; if(pw[id]!=null) acc[b][o].pw.push(pw[id]); }
+  for(let i=1;i<times.length;i++){ const d=tMs[i]-tMs[i-1];
+    for(const id in arrs){ const s=arrs[id][i-1]; if(s===null) continue; const b=band[id]; if(!b) continue;
+      const a=acc[b][op[id]]; a.tot+=d; if(s==="occupied") a.occ+=d; else if(s==="out_of_service") a.oos+=d; } }
+  const avg=a=>a.length? a.reduce((x,y)=>x+y,0)/a.length : null;
+  const byBand={};
+  for(const b in acc){ const byOp={};
+    for(const o in acc[b]){ const a=acc[b][o];
+      byOp[o]={ rate:a.tot>0?a.occ/a.tot:null, occ:a.occ, tot:a.tot, n:a.n,
+                uptime:a.tot>0?(a.tot-a.oos)/a.tot:null, kw:avg(a.pw) }; }
+    byBand[b]={ byOp, present:OP_ORDER.filter(o=> o!=="other" && (o in byOp)) };
+  }
+  return byBand;
 }
 
 // Hour-of-day occupancy profile per operator: occupancy% per clock hour, pooled
@@ -540,27 +590,40 @@ function render({rows,live}){
     c.textContent = `Heads up — the most recent reading is ${dur(agoMin)} old. If that keeps growing, the scheduled job may have stalled (check the Actions tab).`;
   }
 
-  // ---- overall KPIs (cumulative occupancy per operator) ----
-  const all=cumulativeOccupancy(rows);
-  const allRel=reliabilityByOp(rows), allSpec=specsByOp(rows);
-  const overallLead=all.present.filter(op=>all.byOp[op].rate!=null)
-    .sort((a,b)=>all.byOp[b].rate-all.byOp[a].rate)[0];
-  document.getElementById("overall-kpis").innerHTML=
-    all.present.map(op=>kpiCard(op, all.byOp[op], {lead:op===overallLead, coverageMin:spanMin,
-      kw:allSpec[op]&&allSpec[op].kw, uptime:allRel[op]&&allRel[op].uptime})).join("");
-  document.getElementById("overall-gaps").innerHTML=gapsHtml(all);
+  // ---- overall: like-for-like by charger power ----
+  const byBand=occupancyByPower(rows);
+  const BAND_META={ "7":{label:"7 kW", sub:"slow · AC"}, "22":{label:"22 kW", sub:"fast · AC"}, "50":{label:"50 kW", sub:"rapid · DC"} };
+  let bandHtml="";
+  for(const b of ["7","22","50"]){
+    const bb=byBand[b]; if(!bb) continue;
+    const present=bb.present; if(!present.length) continue;
+    const lead=present.filter(o=>bb.byOp[o].rate!=null).sort((a,c)=>bb.byOp[c].rate-bb.byOp[a].rate)[0];
+    const opsLine=present.map(o=>`<b style="color:${OPS[o].color}">${OPS[o].name}</b>`).join(" · ");
+    const cards=present.map(o=>kpiCard(o, bb.byOp[o], {lead:o===lead, coverageMin:spanMin,
+      kw:bb.byOp[o].kw, uptime:bb.byOp[o].uptime})).join("");
+    bandHtml += `<div class="band">
+      <div class="band-head"><span class="band-n">${BAND_META[b].label}</span>
+        <span class="band-sub">${BAND_META[b].sub}</span><span class="band-ops">${opsLine}</span></div>
+      <div class="kpis">${cards}</div>
+      <div class="gaps">${gapsHtml(bb)}</div></div>`;
+  }
+  document.getElementById("overall-bands").innerHTML = bandHtml ||
+    `<p class="hint">No charger-power data available yet.</p>`;
 
-  // executive insight line
+  // executive insight line — power-matched
   const ins=document.getElementById("insight");
-  const edpR=all.byOp.edp?all.byOp.edp.rate:null;
-  const comps=all.present.filter(op=>op!=="edp"&&op!=="other"&&all.byOp[op].rate!=null);
-  if(edpR!=null && comps.length){
-    const compAvg=comps.reduce((s,op)=>s+all.byOp[op].rate,0)/comps.length;
-    const gap=Math.round((edpR-compAvg)*100);
-    const edpSites=new Set(rows.filter(r=>normOp(r.operator)==="edp"&&r.location_id).map(r=>r.location_id)).size;
-    const dir = gap>0?`<b style="color:var(--op-edp)">${gap} pts higher</b> than` : (gap<0?`<b style="color:var(--st-out)">${Math.abs(gap)} pts lower</b> than`:"in line with");
-    ins.style.display="block";
-    ins.innerHTML=`As of <b>${fmt(last)}</b>, EDP runs at <b>${Math.round(edpR*100)}%</b> occupancy across its <b>${edpSites}</b> ${edpSites===1?"site":"sites"} — ${dir} the local competitor average of <b>${Math.round(compAvg*100)}%</b>, over ${dur(spanMin)} of recording.`;
+  const segs=[];
+  for(const b of ["7","22","50"]){ const bb=byBand[b];
+    if(!bb || !bb.byOp.edp || bb.byOp.edp.rate==null) continue;
+    const comp=bb.present.find(o=>o!=="edp" && bb.byOp[o].rate!=null);
+    const eP=Math.round(bb.byOp.edp.rate*100);
+    if(comp){ const cP=Math.round(bb.byOp[comp].rate*100); const g=eP-cP; const gt=g>0?`+${g}`:`${g}`;
+      const col = g<0?"var(--st-out)":(g>0?"var(--op-edp)":"var(--faint)");
+      segs.push(`<b>${BAND_META[b].label}</b> EDP ${eP}% vs ${OPS[comp].name} ${cP}% (<b style="color:${col}">${gt} pts</b>)`);
+    } else segs.push(`<b>${BAND_META[b].label}</b> EDP ${eP}% (no like-for-like competitor)`);
+  }
+  if(segs.length){ ins.style.display="block";
+    ins.innerHTML=`As of <b>${fmt(last)}</b>, like-for-like by charger power — ${segs.join("  ·  ")} — over ${dur(spanMin)} of recording.`;
   }
 
   // ---- per cluster ----
