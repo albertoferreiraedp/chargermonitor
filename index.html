@@ -8,8 +8,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" />
-<script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@2.4.0/dist/maplibre-gl.css" />
+<script src="https://unpkg.com/maplibre-gl@2.4.0/dist/maplibre-gl.js"></script>
 <script>window.mapboxgl = window.maplibregl;</script>
 <script src="https://unpkg.com/mapbox-gl-leaflet@0.0.16/leaflet-mapbox-gl.js"></script>
 <script>if(typeof L!=="undefined" && !L.maplibreGL && L.mapboxGL) L.maplibreGL = L.mapboxGL;</script>
@@ -598,7 +598,9 @@ function makeMap(divId, locs){
   const hasWebGL=(()=>{ try{ const c=document.createElement("canvas"); return !!(window.WebGLRenderingContext && (c.getContext("webgl")||c.getContext("experimental-webgl"))); }catch(e){ return false; } })();
   const glFactory = L.maplibreGL || L.mapboxGL;
   if(glFactory && typeof maplibregl!=="undefined" && hasWebGL){
-    glFactory({ style:"https://tiles.openfreemap.org/styles/dark-matter", attribution:OFM_ATTR }).addTo(map);
+    const glLayer = glFactory({ style:"https://tiles.openfreemap.org/styles/dark-matter", attribution:OFM_ATTR }).addTo(map);
+    const kick=()=>{ try{ map.invalidateSize(false); const gm=glLayer._glMap||(glLayer.getMaplibreMap&&glLayer.getMaplibreMap()); if(gm&&gm.resize) gm.resize(); }catch(e){} };
+    map.whenReady(kick); setTimeout(kick,150); setTimeout(kick,500);
   } else {
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
       {maxZoom:19, subdomains:"abc", attribution:"&copy; OpenStreetMap contributors"}).addTo(map);
