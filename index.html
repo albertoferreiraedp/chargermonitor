@@ -105,6 +105,8 @@
   .gridpanel .grid { margin-top:6px; }
   @media (max-width:860px){ .cluster-row, .cluster-row.eq, .cluster-row.b { grid-template-columns:1fr; } }
   .mapbox .leaflet-container { background:#0e141d; font-family:"Manrope",sans-serif; }
+  /* only affects the raster OSM fallback (img.leaflet-tile); the dark-matter GL canvas is untouched */
+  .mapbox img.leaflet-tile { filter: invert(1) hue-rotate(180deg) brightness(.9) contrast(.9) saturate(.6); }
   .mapbox .leaflet-bar a, .mapbox .leaflet-control-zoom a { background:var(--panel); color:var(--text); border-color:var(--line); }
   .mapbox .leaflet-tooltip { background:#0c1219; color:var(--text); border:1px solid var(--line); box-shadow:none; font-size:12px; }
   .mapbox .leaflet-tooltip-top::before { border-top-color:var(--line); }
@@ -596,7 +598,7 @@ function makeMap(divId, locs){
   const hasWebGL=(()=>{ try{ const c=document.createElement("canvas"); return !!(window.WebGLRenderingContext && (c.getContext("webgl")||c.getContext("experimental-webgl"))); }catch(e){ return false; } })();
   const glFactory = L.maplibreGL || L.mapboxGL;
   if(glFactory && typeof maplibregl!=="undefined" && hasWebGL){
-    glFactory({ style:"https://tiles.openfreemap.org/styles/positron", attribution:OFM_ATTR }).addTo(map);
+    glFactory({ style:"https://tiles.openfreemap.org/styles/dark-matter", attribution:OFM_ATTR }).addTo(map);
   } else {
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
       {maxZoom:19, subdomains:"abc", attribution:"&copy; OpenStreetMap contributors"}).addTo(map);
