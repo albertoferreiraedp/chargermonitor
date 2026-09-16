@@ -8,6 +8,11 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" />
+<script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
+<script>window.mapboxgl = window.maplibregl;</script>
+<script src="https://unpkg.com/mapbox-gl-leaflet@0.0.16/leaflet-mapbox-gl.js"></script>
+<script>if(typeof L!=="undefined" && !L.maplibreGL && L.mapboxGL) L.maplibreGL = L.mapboxGL;</script>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -587,8 +592,15 @@ function makeMap(divId, locs){
   const pts=locs.map(loc=>({loc, c:LOCATION_COORDS[loc.key]})).filter(x=>x.c);
   if(!pts.length) return;
   const map=L.map(divId,{scrollWheelZoom:false, attributionControl:true});
-  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
-    {maxZoom:20, subdomains:"abcd", attribution:"&copy; OpenStreetMap &copy; CARTO"}).addTo(map);
+  const OFM_ATTR='&copy; <a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>';
+  const hasWebGL=(()=>{ try{ const c=document.createElement("canvas"); return !!(window.WebGLRenderingContext && (c.getContext("webgl")||c.getContext("experimental-webgl"))); }catch(e){ return false; } })();
+  const glFactory = L.maplibreGL || L.mapboxGL;
+  if(glFactory && typeof maplibregl!=="undefined" && hasWebGL){
+    glFactory({ style:"https://tiles.openfreemap.org/styles/positron", attribution:OFM_ATTR }).addTo(map);
+  } else {
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+      {maxZoom:19, subdomains:"abc", attribution:"&copy; OpenStreetMap contributors"}).addTo(map);
+  }
   const latlngs=[];
   pts.forEach(({loc,c})=>{
     const color=OPS[loc.op].color;
