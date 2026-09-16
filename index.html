@@ -606,7 +606,7 @@ function makeMap(divId, locs){
 
   if(typeof maplibregl!=="undefined" && hasWebGL){
     try{
-      const map=new maplibregl.Map({ container:divId, style:"https://tiles.openfreemap.org/styles/dark-matter",
+      const map=new maplibregl.Map({ container:divId, style:"https://tiles.openfreemap.org/styles/dark",
         center:[pts[0].c[1], pts[0].c[0]], zoom:15, attributionControl:false, scrollZoom:false });
       map.addControl(new maplibregl.NavigationControl({showCompass:false}), "top-left");
       map.addControl(new maplibregl.AttributionControl({customAttribution:OFM_ATTR, compact:true}));
@@ -627,6 +627,11 @@ function makeMap(divId, locs){
       }
       const kick=()=>{ try{ map.resize(); }catch(e){} };
       map.on("load", kick); setTimeout(kick,200); setTimeout(kick,600);
+      let swapped=false;
+      map.on("error", (ev)=>{ const m=(ev&&ev.error&&ev.error.message)||"";
+        console.warn("MapLibre error:", m||ev);
+        if(!swapped && /style|4\d\d|fetch|load/i.test(m)){ swapped=true;
+          try{ map.setStyle("https://tiles.openfreemap.org/styles/liberty"); }catch(e){} } });
       return;
     }catch(e){ console.error("MapLibre failed, falling back to Leaflet", e); el.innerHTML=""; }
   }
